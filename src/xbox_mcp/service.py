@@ -77,8 +77,8 @@ def answer(outcome: str, say: str, **fields: Any) -> dict[str, Any]:  # noqa: AN
 def cloud_failure(error: UnreachableError, **fields: Any) -> dict[str, Any]:  # noqa: ANN401
     """The answer when the cloud did not answer, or there is no sign-in."""
     if isinstance(error, SignedOutError):
-        return answer("signed_out", SIGNED_OUT, **fields)
-    return answer("unreachable", UNREACHABLE, **fields)
+        return answer("signed_out", error.say or SIGNED_OUT, **fields)
+    return answer("unreachable", error.say or UNREACHABLE, **fields)
 
 
 def _plain(power: Power) -> Power:
@@ -195,8 +195,8 @@ class XboxService:
             apps = await self.cloud.apps(console.id) if status.power == "on" else []
         except Refused as refused:
             return answer(refused.outcome, refused.say, power=None, running=None)
-        except SignedOutError:
-            return answer("signed_out", SIGNED_OUT, power=None, running=None)
+        except SignedOutError as error:
+            return answer("signed_out", error.say or SIGNED_OUT, power=None, running=None)
         except UnreachableError:
             # RULE: a cloud that does not answer is not called on or off
             return answer("unreachable", UNREACHABLE, power=None, running=None)

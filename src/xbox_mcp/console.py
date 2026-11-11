@@ -54,6 +54,11 @@ class Sent:
 class UnreachableError(Exception):
     """Microsoft's cloud did not answer, or answered with an error."""
 
+    def __init__(self, message: str, *, say: str | None = None) -> None:
+        """An error whose `say`, when given, tells the owner what is wrong and what to do."""
+        super().__init__(message)
+        self.say = say
+
 
 class SignedOutError(UnreachableError):
     """There is no Microsoft sign-in, or it has run out."""
