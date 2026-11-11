@@ -166,9 +166,19 @@ class XboxService:
         self.cloud, self.settings, self.tv = cloud, settings, tv
         self.hour, self.wait = hour, wait
         self.questions = questions or Questions()
+        self._console: Console | None = None
 
     async def console(self) -> Console:
-        """The console the owner means: the one named in the settings, or the only one."""
+        """The console the owner means: the one named in the settings, or the only one.
+
+        It is looked up once and kept, so each later answer costs one call to the cloud fewer.
+        """
+        if self._console is not None:
+            return self._console
+        self._console = await self._find_console()
+        return self._console
+
+    async def _find_console(self) -> Console:
         consoles = await self.cloud.consoles()
         wanted = self.settings.console
         if wanted:
@@ -275,15 +285,19 @@ class XboxService:
     async def _watch(self, console_id: str, done: Callable[[ConsoleStatus], bool]) -> ConsoleStatus | None:
         """The console's status once `done` holds for it, or the last one read when the watch ends."""
         waited, status = 0.0, None
-        while True:
-            try:
-                status = await self.cloud.status(console_id)
-            except UnreachableError:
-                status = None
-            if (status and done(status)) or waited >= READ_BACK_WITHIN:
-                return status
-            await self.wait(READ_BACK_EVERY)
-            waited += READ_BACK_EVERY
+        try:
+            async with asyncio.timeout(READ_BACK_WITHIN):
+                while True:
+                    try:
+                        status = await self.cloud.status(console_id)
+                    except UnreachableError:
+                        status = None
+                    if (status and done(status)) or waited >= READ_BACK_WITHIN:
+                        return status
+                    await self.wait(READ_BACK_EVERY)
+                    waited += READ_BACK_EVERY
+        except TimeoutError:
+            return status
 
     async def _read_back(self, console_id: str, wanted: Power) -> Power | None:
         """The console's power once it reads `wanted`, or what it reads when the watch ends."""

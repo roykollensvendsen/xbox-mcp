@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, ClassVar, Self
 
-#: Seconds the TV step may take, starting the TV plugin included.
+#: Seconds a TV step may take, starting the TV plugin and waiting for HDMI-CEC included.
 TV_WITHIN = 6.0
 #: Seconds after a wake for HDMI-CEC to bring the TV's screen on.
 CEC_SETTLE = 4.0
@@ -139,7 +139,7 @@ async def screen_on(tv: TvSwitch, within: float = TV_WITHIN) -> bool | None:
 async def show_xbox(tv: TvSwitch, settle: float = CEC_SETTLE) -> dict[str, Any]:
     """The TV step after a confirmed wake, inside its own deadline, the TV plugin closed afterwards."""
     try:
-        async with asyncio.timeout(TV_WITHIN + settle):
+        async with asyncio.timeout(TV_WITHIN):
             async with tv:
                 return await tv.show_xbox(settle)
     except TimeoutError:
