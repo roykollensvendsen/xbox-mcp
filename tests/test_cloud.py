@@ -505,3 +505,23 @@ def test_a_sign_in_the_library_refuses_says_to_sign_in_again():
     with pytest.raises(SignedOutError) as raised:
         asyncio.run(driver.status("F4000000000000A1"))
     assert SIGN_IN_COMMAND in raised.value.say
+
+
+def test_the_phone_route_explains_the_error_page_before_asking_for_the_whole_address(tmp_path, monkeypatch):
+    monkeypatch.setattr(cloud, "PkceAuth", SigningAuth)
+    monkeypatch.setattr(cloud, "SignedSession", Session)
+    monkeypatch.setattr(cloud, "XboxLiveClient", lambda _auth: Recorder())
+    said, asked = [], []
+
+    def ask(prompt):
+        asked.append((prompt, "\n".join(said)))
+        return "http://localhost:8080/auth/callback?code=c1"
+
+    tokens = tmp_path / "tokens.json"
+    assert asyncio.run(cloud.sign_in(tokens, said.append, ask=ask, other_device=True)) is True
+    ((prompt, before),) = asked
+    assert prompt == "Paste the whole address: "
+    assert "error page" in before
+    assert "That is expected." in before
+    assert "WHOLE address" in before
+    assert before.index("https://") < before.index("WHOLE address"), "the link comes first"
