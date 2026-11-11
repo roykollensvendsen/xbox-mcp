@@ -61,10 +61,22 @@ cd ~/xbox-mcp && uv run xbox-mcp sign-in
 It prints a link to Microsoft's sign-in page and opens it in the browser. Sign
 in with the Microsoft account the Xbox uses, and allow the access it asks for.
 The page then sends the browser back to this computer, and the terminal says
-"Signed in" and names the consoles on the account. If another program already
-uses port 8080, the terminal says so first. The browser then ends on a page
-that fails or shows that other program; copy the whole address from the
-address bar and paste it into the terminal, which does not show it. The sign-in is kept in
+"Signed in" and names the consoles on the account.
+
+If another program already uses port 8080, the terminal says so first. The
+browser then ends on a page that fails or shows that other program. Copy the
+whole address from the address bar, or just the part after `code=`, and paste
+it into the terminal, which does not show it.
+
+To sign in from another device, such as a phone, add `--other-device`. The
+terminal prints the link without opening a browser; open it on the phone, sign
+in, and paste the address the phone ends on (or just its code) the same way.
+Nothing listens on the phone, so no other program sees the code.
+
+The sign-in link carries a PKCE challenge, and the code is redeemed only with
+its verifier, which never leaves the computer. A code that another program sees
+on its way back cannot be used without it, where Microsoft checks the
+challenge. The sign-in is kept in
 `~/.config/xbox-mcp/tokens.json`, readable by you alone, and is never shown,
 logged or sent to the voice. No Azure app registration is needed
 ([ADR-XB-001](decisions/ADR-XB-001-reach-the-xbox-through-microsofts-cloud.md)).
@@ -72,6 +84,7 @@ logged or sent to the voice. No Azure app registration is needed
 ```console
 $ uv run xbox-mcp sign-in --help
 usage: xbox-mcp [-h] [--simulate] [--settings-file SETTINGS_FILE]
+                [--other-device]
                 {serve,status,sign-in}
 
 Command line for xbox-mcp: serve the tools to a voice session, or ask the
@@ -85,6 +98,7 @@ options:
   --simulate            a pretend Xbox, no network
   --settings-file SETTINGS_FILE
                         instead of ~/.config/xbox-mcp/config.toml
+  --other-device        sign-in: open the link on another device, then paste
 ```
 
 ## Settings
