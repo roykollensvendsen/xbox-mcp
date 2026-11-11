@@ -49,6 +49,7 @@ ALLOWED = frozenset(
         "smartglass.wake_up",
         "smartglass.turn_off",
         "smartglass.launch_app",
+        "smartglass.go_home",
     }
 )
 #: The library's public client id, registered by OpenXbox as a desktop app: no secret (ADR-XB-001).
@@ -294,6 +295,12 @@ class CloudConsole:
             lambda api: api.smartglass.launch_app(console_id, product_id, timeout=CALL_TIMEOUT)
         )
         return self._sent(response)
+
+    async def home(self, console_id: str) -> Sent:
+        """Ask the console to show Home; the app in front stays paused in the background."""
+        return self._sent(
+            await self._call(lambda api: api.smartglass.go_home(console_id, timeout=CALL_TIMEOUT))
+        )
 
 
 class _Callback(BaseHTTPRequestHandler):

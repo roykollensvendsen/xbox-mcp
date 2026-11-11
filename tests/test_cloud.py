@@ -113,6 +113,7 @@ def _every_call(driver):
         await driver.wake(console_id)
         await driver.sleep(console_id)
         await driver.launch(console_id, "9MVXMVT8ZKWC")
+        await driver.home(console_id)
 
     asyncio.run(run())
 
@@ -147,6 +148,7 @@ def test_the_allow_list_has_nothing_for_the_store_account_friends_or_messages():
             "wake_up",
             "turn_off",
             "launch_app",
+            "go_home",
         }, path
 
 

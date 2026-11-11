@@ -7,7 +7,7 @@ only once the console shows that title in front.
 
 import asyncio
 
-from xbox_mcp.console import App
+from xbox_mcp.console import HOME_AUMID, App
 from xbox_mcp.service import XboxService
 from xbox_mcp.settings import Settings
 from xbox_mcp.simulator import CONSOLE_ID, FORZA, MINECRAFT, SimulatedCloud
@@ -107,3 +107,42 @@ def test_a_start_with_no_app_id_to_read_back_is_never_said_as_done():
     answer = _launch(cloud, "Forza")
     assert answer["outcome"] == "not_confirmed"
     assert "not confirmed" in answer["say"]
+
+
+def _over(running, title):
+    cloud = SimulatedCloud(power="on")
+    cloud.focus = running.aumid
+    service = XboxService(cloud, LISTED, wait=_no_wait)
+    return cloud, service, asyncio.run(service.launch(title))
+
+
+def test_a_start_over_a_running_game_asks_first_naming_it():
+    cloud, _, asked = _over(FORZA, "Minecraft")
+    assert asked["outcome"] == "asked"
+    assert asked["token"]
+    assert asked["say"].startswith("Forza Horizon 5 is running.")
+    assert "Minecraft" in asked["say"]
+    assert asked["say"].endswith("?")
+    assert cloud.sent == []
+
+
+def test_a_start_over_a_running_game_happens_on_the_yes():
+    cloud, service, asked = _over(FORZA, "Minecraft")
+    done = asyncio.run(service.launch_confirm(asked["token"]))
+    assert cloud.sent == [("launch", CONSOLE_ID, MINECRAFT.product_id)]
+    assert done["outcome"] == "done"
+
+
+def test_a_start_over_a_game_is_checked_again_at_the_yes():
+    cloud, service, asked = _over(FORZA, "Minecraft")
+    cloud.focus = HOME_AUMID
+    answer = asyncio.run(service.launch_confirm(asked["token"]))
+    assert answer["outcome"] == "refused"
+    assert cloud.sent == []
+
+
+def test_a_game_already_in_front_is_not_started_again():
+    cloud, _, answer = _over(MINECRAFT, "Minecraft")
+    assert answer["outcome"] == "done"
+    assert "already" in answer["say"]
+    assert cloud.sent == []

@@ -20,16 +20,25 @@ if TYPE_CHECKING:
 CONFIRM_WITHIN = 30.0
 
 Action = Literal["wake", "sleep"]
+#: What a question asks about: power, sending the console to Home, or a start over a running game.
+Kind = Literal["wake", "sleep", "home", "launch"]
 
 
 @dataclass(frozen=True)
 class Question:
-    """A power question waiting for the owner's yes."""
+    """A question waiting for the owner's yes."""
 
     token: str
-    action: Action
+    action: Kind
     console_id: str
     asked_at: float
+    #: What ran in front when asked (home, launch), by its AUMID, checked again at the yes.
+    over: str | None = None
+    #: The game it is about: the one in front (home), or the one to start (launch).
+    name: str | None = None
+    #: The game to start (launch), by its store id and AUMID.
+    product_id: str | None = None
+    aumid: str | None = None
 
 
 class Questions:
@@ -40,15 +49,18 @@ class Questions:
         self._clock = clock
         self._open: Question | None = None
 
-    def ask(self, action: Action, console_id: str) -> Question:
+    def ask(self, action: Kind, console_id: str, **about: str | None) -> Question:
         """Open a question, closing any that was open."""
-        self._open = Question(secrets.token_urlsafe(12), action, console_id, self._clock())
+        self._open = Question(secrets.token_urlsafe(12), action, console_id, self._clock(), **about)
         return self._open
 
-    def take(self, token: str) -> Question | None:
-        """The open question this token answers, while it is fresh; None otherwise."""
+    def take(self, token: str, kinds: tuple[Kind, ...] = ("wake", "sleep")) -> Question | None:
+        """The open question of one of `kinds` this token answers, while it is fresh; None otherwise."""
         question = self._open
         if question is None or not secrets.compare_digest(question.token, token):
+            return None
+        # RULE: a token answers only the question it was asked for
+        if question.action not in kinds:
             return None
         # RULE: a token older than thirty seconds is refused
         if self._clock() - question.asked_at > CONFIRM_WITHIN:

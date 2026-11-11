@@ -93,3 +93,7 @@ class Cloud(Protocol):
     async def launch(self, console_id: str, product_id: str) -> Sent:
         """Ask the console to start an installed app by its store product id."""
         ...
+
+    async def home(self, console_id: str) -> Sent:
+        """Ask the console to show Home; the app in front stays paused in the background."""
+        ...
