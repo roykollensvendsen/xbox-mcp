@@ -4,6 +4,7 @@
 import asyncio
 import re
 
+from xbox_mcp.cli import build_service
 from xbox_mcp.server import ANSWER_WITHIN, build_server
 from xbox_mcp.service import XboxService
 from xbox_mcp.settings import Settings
@@ -97,3 +98,19 @@ def test_a_tool_still_working_at_the_deadline_says_it_carries_on(monkeypatch):
 def test_a_tools_longest_wait_fits_in_the_voices_time():
     voice_limit, margin = 15.0, 2.0
     assert ANSWER_WITHIN + margin <= voice_limit
+
+
+def test_a_simulated_wake_asks_then_wakes_the_xbox_and_shows_it_on_the_tv():
+    service = build_service(simulate=True, settings_file=None)
+    service.hour = lambda: 12
+    server = build_server(service, simulated=True)
+
+    async def run():
+        asked = (await server.call_tool("xbox_power_request", {"action": "wake"})).structured_content
+        done = (await server.call_tool("xbox_power_confirm", {"token": asked["token"]})).structured_content
+        return asked, done
+
+    asked, done = asyncio.run(run())
+    assert asked["say"].startswith("Simulated: The Xbox is asleep.")
+    assert done["say"].startswith("Simulated: Woken. The Xbox is on.")
+    assert done["tv"]["outcome"] == "done"

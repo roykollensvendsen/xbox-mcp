@@ -100,4 +100,26 @@ def build_server(service: XboxService, *, simulated: bool = False) -> MCPServer[
     async def xbox_status() -> dict[str, Any]:
         return await service.status()
 
+    @guarded.tool(
+        annotations=CHANGES,
+        description=(
+            "Asks before wake or sleep.\nAction: wake or sleep. Sends nothing: read the question in 'say' "
+            "aloud, and pass its token to xbox_power_confirm only on the owner's clear yes. At night a wake "
+            "is refused unless the TV is already on."
+        ),
+    )
+    async def xbox_power_request(action: str) -> dict[str, Any]:
+        return await service.power_request(action)
+
+    @guarded.tool(
+        annotations=CHANGES,
+        description=(
+            "Carry out the owner's yes.\nToken: from the latest xbox_power_request, used once, within 30"
+            " seconds. Wakes or sleeps the Xbox, says 'not confirmed' until its status shows it, and after"
+            " a wake switches the TV to the Xbox."
+        ),
+    )
+    async def xbox_power_confirm(token: str) -> dict[str, Any]:
+        return await service.power_confirm(token)
+
     return server

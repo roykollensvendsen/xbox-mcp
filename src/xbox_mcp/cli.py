@@ -14,20 +14,23 @@ from xbox_mcp.server import build_server
 from xbox_mcp.service import XboxService
 from xbox_mcp.settings import Settings, SettingsError, load_settings, settings_path
 from xbox_mcp.simulator import SimulatedCloud
-from xbox_mcp.tv import TvSwitch
+from xbox_mcp.tv import SimulatedTvPlugin, TvSwitch
 
 #: Every verb this command has. The documentation test requires each one to
 #: appear in a worked example, so a verb cannot be added without one.
 COMMANDS: tuple[str, ...] = ("serve", "status")
 
 
-def _service(*, simulate: bool, settings_file: str | None) -> XboxService:
+def build_service(*, simulate: bool, settings_file: str | None) -> XboxService:
+    """The service a command or a voice session uses: the pretend Xbox, or the owner's."""
     if simulate:
-        return XboxService(SimulatedCloud(), Settings(titles=("Forza Horizon 5", "Minecraft")))
+        cloud, tv = SimulatedCloud(), SimulatedTvPlugin(screen="off")
+        cloud.on_wake = tv.cec_on  # as HDMI-CEC switches the TV on when the console wakes
+        return XboxService(cloud, Settings(titles=("Forza Horizon 5", "Minecraft")), tv=tv)
     path = pathlib.Path(settings_file).expanduser() if settings_file else settings_path()
     settings = load_settings(path)
-    cloud: Cloud = NoCloud()
-    return XboxService(cloud, settings)
+    real: Cloud = NoCloud()
+    return XboxService(real, settings, tv=tv_from(settings.tv))
 
 
 def tv_from(table: dict[str, object]) -> TvSwitch | None:
@@ -49,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--settings-file", help="instead of ~/.config/xbox-mcp/config.toml")
     args = parser.parse_args(argv)
     try:
-        service = _service(simulate=args.simulate, settings_file=args.settings_file)
+        service = build_service(simulate=args.simulate, settings_file=args.settings_file)
     except SettingsError as error:
         sys.stderr.write(f"xbox-mcp: {error}\n")
         return 2

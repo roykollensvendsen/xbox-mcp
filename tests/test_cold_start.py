@@ -19,7 +19,7 @@ from mcp.client.stdio import stdio_client
 
 #: Seconds a cold start may take to list the tools, kept well inside the bridge's 15.
 COLD_START_WITHIN = 10.0
-TOOLS = {"xbox_status"}
+TOOLS = {"xbox_status", "xbox_power_request", "xbox_power_confirm"}
 
 
 def _listed(args, env=None):
