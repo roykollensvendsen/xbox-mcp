@@ -14,8 +14,12 @@ readable by the owner alone. They are never logged or shown.
 from __future__ import annotations
 
 import asyncio
+import base64
 import getpass
+import hashlib
 import os
+import re
+import secrets
 import stat
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -77,6 +81,47 @@ class NotAllowedError(AttributeError):
 def _signed_out(say: str) -> SignedOutError:
     """No sign-in the plugin can use, with what the owner should do."""
     return SignedOutError("no usable Microsoft sign-in", say=say)
+
+
+def pkce_pair() -> tuple[str, str]:
+    """A fresh PKCE verifier, and its S256 challenge (RFC 7636)."""
+    verifier = secrets.token_urlsafe(64)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    return verifier, challenge
+
+
+class PkceAuth(AuthenticationManager):
+    """The library's sign-in manager, redeeming the code only together with its PKCE verifier.
+
+    The library sends no verifier of its own, and the public client id has no
+    secret, so without this a code seen by another program could be redeemed by
+    it. ``_oauth2_token_request`` is the library's, at the pinned 0.4.0.
+    """
+
+    def __init__(self, *args: Any, verifier: str) -> None:  # noqa: ANN401 - the library's own arguments
+        """The library's manager, with the verifier whose challenge went in the sign-in link."""
+        super().__init__(*args)
+        self.verifier = verifier
+
+    async def request_oauth_token(self, authorization_code: str) -> OAuth2TokenResponse:
+        """Redeem the code, with the verifier."""
+        # RULE: a sign-in code is redeemed only with its pkce verifier
+        return await self._oauth2_token_request(
+            {
+                "grant_type": "authorization_code",
+                "code": authorization_code,
+                "scope": " ".join(self._scopes),
+                "redirect_uri": self._redirect_uri,
+                "code_verifier": self.verifier,
+            }
+        )
+
+
+def with_challenge(url: str, challenge: str) -> str:
+    """The sign-in link, asking Microsoft to tie the code to the challenge."""
+    return str(
+        httpx.URL(url).copy_merge_params({"code_challenge": challenge, "code_challenge_method": "S256"})
+    )
 
 
 class _Provider:
@@ -272,34 +317,50 @@ def _wait_for_code(server: HTTPServer) -> str | None:
     return _Callback.code
 
 
+#: A sign-in code on its own, as Microsoft writes them (such as M.C5_BAY.2.U.…).
+BARE_CODE = re.compile(r"[A-Za-z0-9._~!*$-]+")
+
+
 def code_from(address: str) -> str | None:
-    """The sign-in code in the address the browser ended on, as the owner pasted it."""
-    codes = parse_qs(urlparse(address.strip()).query).get("code") or []
+    """The sign-in code in what the owner pasted: the address the browser ended on, or the code alone."""
+    pasted = address.strip()
+    if "?" not in pasted and BARE_CODE.fullmatch(pasted):
+        return pasted
+    codes = parse_qs(urlparse(pasted).query).get("code") or []
     return codes[0] if codes else None
 
 
 PASTE = (
-    "Another program on this computer uses port {port}, so the sign-in cannot come back here by itself.\n"
     "After you sign in, the browser ends on a page that fails or shows something else. That is expected.\n"
-    "Copy the whole address from the browser's address bar, starting with http://localhost:{port}/, "
-    "and paste it here. It will not be shown."
+    "Copy the whole address from the browser's address bar (it starts with http://localhost:{port}/), "
+    "or just the part after code=, and paste it here. It will not be shown."
 )
+BUSY = "Another program on this computer uses port {port}, so the sign-in cannot come back here by itself."
+OTHER_DEVICE = "You may open the link on another device, such as your phone, and sign in there."
 
 
-async def _await_code(url: str, say: Callable[[str], None], ask: Callable[[str], str]) -> str | None:
+async def _await_code(
+    url: str, say: Callable[[str], None], ask: Callable[[str], str], *, other_device: bool = False
+) -> str | None:
     """Open `url` in the browser, and the sign-in code Microsoft sends back, by listener or by paste."""
-    server = _listen()
+    server = None if other_device else _listen()
     if server is None:
+        say(OTHER_DEVICE if other_device else BUSY.format(port=REDIRECT_PORT))
         say(PASTE.format(port=REDIRECT_PORT))
-    webbrowser.open(url)
+    if not other_device:
+        webbrowser.open(url)
     if server is None:
-        return code_from(await asyncio.to_thread(ask, "Address: "))
+        return code_from(await asyncio.to_thread(ask, "Address or code: "))
     say(f"Waiting up to {int(SIGN_IN_WITHIN // 60)} minutes for you to sign in, in the browser...")
     return await asyncio.to_thread(_wait_for_code, server)
 
 
 async def sign_in(
-    tokens: pathlib.Path, say: Callable[[str], None], ask: Callable[[str], str] = getpass.getpass
+    tokens: pathlib.Path,
+    say: Callable[[str], None],
+    ask: Callable[[str], str] = getpass.getpass,
+    *,
+    other_device: bool = False,
 ) -> bool:
     """The owner signs in to Microsoft in a browser; the tokens go to `tokens`, never to the screen.
 
@@ -307,14 +368,18 @@ async def sign_in(
     program holds the port, through the address the owner pastes, unshown.
     """
     async with SignedSession() as session:
-        auth = AuthenticationManager(session, CLIENT_ID, "", REDIRECT_URI)
-        url = auth.generate_authorization_url()
+        verifier, challenge = pkce_pair()
+        auth = PkceAuth(session, CLIENT_ID, "", REDIRECT_URI, verifier=verifier)
+        url = with_challenge(auth.generate_authorization_url(), challenge)
         say(f"Open this page and sign in with the Microsoft account the Xbox uses:\n\n  {url}\n")
-        code = await _await_code(url, say, ask)
+        code = await _await_code(url, say, ask, other_device=other_device)
         if not code:
             say("No sign-in code came back. Run xbox-mcp sign-in again, and sign in within five minutes.")
             return False
-        await auth.request_tokens(code)
+        try:
+            await auth.request_tokens(code)
+        except httpx.HTTPError:
+            auth.oauth = None
         if auth.oauth is None:
             say("Microsoft gave no sign-in. Run xbox-mcp sign-in again.")
             return False
