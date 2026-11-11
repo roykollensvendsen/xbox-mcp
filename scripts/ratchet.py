@@ -58,7 +58,7 @@ EXCEPTION = re.compile(r"^\s*ratchet-exception:\s*([a-z_]+)", re.IGNORECASE | re
 TALLY = re.compile(r"(\d+)/(\d+) rules turned off")
 #: The layers, lowest first. The core knows no MCP and not the Xbox library; a driver reaches one
 #: thing outside (Microsoft's cloud, or the TV plugin) for the core; only the top puts them together.
-CORE = {"__init__", "_version", "drivers", "settings", "console", "service", "simulator", "tv"}
+CORE = {"__init__", "_version", "drivers", "settings", "console", "service", "simulator", "tv", "power"}
 TOP = {"server", "cli"}
 #: Which layers each layer may import from this package, and the outside packages it never may.
 ALLOWED = {
