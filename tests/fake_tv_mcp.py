@@ -22,7 +22,7 @@ def _log(tool, **arguments):
 @server.tool()
 async def tv_status(tv: str) -> dict:
     _log("tv_status", tv=tv)
-    return {"success": True, "outcome": "done", "screen": SCREEN, "state": "reachable", "say": "..."}
+    return {"success": True, "say": "...", "tvs": [{"tv": "the living-room TV", "state": SCREEN}]}
 
 
 @server.tool()

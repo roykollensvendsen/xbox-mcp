@@ -23,9 +23,16 @@ NOT_ON = "The TV did not come on, so I left it alone. Switch it on and to the Xb
 LOOK_EVERY = 1.0
 
 
-def _screen(report: dict[str, Any]) -> str | None:
-    """The TV's own screen, as tv-mcp reports it: ``screen``, or ``state`` when there is none."""
-    value = report.get("screen", report.get("state"))
+def screen_of(report: dict[str, Any]) -> str | None:
+    """The TV's screen in tv-mcp's ``tv_status`` answer; None unless it names exactly one TV.
+
+    tv-mcp answers with a list, ``tvs``, of one entry per TV asked about. Its
+    screen is ``screen`` where the TV reports one, else ``state``.
+    """
+    tvs = report.get("tvs")
+    if not (isinstance(tvs, list) and len(tvs) == 1 and isinstance(tvs[0], dict)):
+        return None
+    value = tvs[0].get("screen", tvs[0].get("state"))
     return value if isinstance(value, str) else None
 
 
@@ -59,7 +66,7 @@ class TvSwitch:
     async def is_on(self) -> bool:
         """Whether the TV plugin reports the screen on."""
         report = await self.call("tv_status", {"tv": self.tv}) or {}
-        return _screen(report) == "on"
+        return screen_of(report) == "on"
 
     async def show_xbox(self, settle: float) -> dict[str, Any]:
         """Wait up to `settle` seconds for the screen to come on, then switch it to the Xbox."""
@@ -111,12 +118,9 @@ class SimulatedTvPlugin(TvSwitch):
     async def _send(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         self.calls.append((tool, arguments))
         if tool == "tv_status":
-            return {
-                "success": self.screen is not None,
-                "outcome": "done",
-                "screen": self.screen,
-                "say": "...",
-            }
+            if self.screen is None:
+                return {"success": False, "outcome": "unreachable", "say": "..."}
+            return {"success": True, "say": "...", "tvs": [{"tv": self.tv, "state": self.screen}]}
         if self.screen != "on":
             return {
                 "success": False,
