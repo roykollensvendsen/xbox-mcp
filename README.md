@@ -107,6 +107,14 @@ options:
   --other-device        sign-in: open the link on another device, then paste
 ```
 
+## When it breaks
+
+When xbox-mcp itself fails, the voice hears that it went wrong and where the
+reason is written: `~/.local/state/xbox-mcp/xbox-mcp.log`, readable by you
+alone (set `XBOX_MCP_LOG` for another file). The same lines go to stderr, which
+the voice bridge keeps in its own log. The sign-in tokens are never written
+there.
+
 ## Settings
 
 In `~/.config/xbox-mcp/config.toml`, never in this repository:
