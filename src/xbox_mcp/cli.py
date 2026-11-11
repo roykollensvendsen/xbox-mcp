@@ -54,7 +54,7 @@ def _sign_in(args: argparse.Namespace) -> int:  # pragma: no cover - the owner s
         sys.stdout.write(text + "\n")
         sys.stdout.flush()
 
-    return 0 if asyncio.run(sign_in(tokens_path(path), say)) else 1
+    return 0 if asyncio.run(sign_in(tokens_path(path), say, other_device=args.other_device)) else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -63,6 +63,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("command", choices=COMMANDS)
     parser.add_argument("--simulate", action="store_true", help="a pretend Xbox, no network")
     parser.add_argument("--settings-file", help="instead of ~/.config/xbox-mcp/config.toml")
+    parser.add_argument(
+        "--other-device", action="store_true", help="sign-in: open the link on another device, then paste"
+    )
     args = parser.parse_args(argv)
     if args.command == "sign-in":  # pragma: no cover - the owner signs in, in a browser
         return _sign_in(args)
