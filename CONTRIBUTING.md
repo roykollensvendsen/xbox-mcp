@@ -26,12 +26,30 @@ because they are the same lines:
 uv run ruff check . && uv run ruff format --check .
 uv run mypy src
 uv run pytest -q --cov
+uv run python scripts/mutate.py
 committed --no-merge-commit origin/main..HEAD
+python scripts/no_session_links.py origin/main..HEAD
 ```
+
+The suite also scans every tracked file for a home address, a room or console
+name from the owner's settings and an email address. The pre-commit hook runs
+the same private-data scan over what is staged, so they are refused before
+they are a commit.
 
 Run them after the last edit, not before it. A file edited after the format
 gate ran will fail in continuous integration, which is the cheapest possible
 way to learn that the gates are not a ritual performed once.
+
+CI also scans every commit in the history for keys, tokens and passwords with
+[gitleaks](https://github.com/gitleaks/gitleaks), the `secrets` job in
+`.github/workflows/checks.yml`. A secret deleted in a later commit is still in
+every clone, so the whole history is scanned, not only the change. It needs
+Docker, so it is not one of the lines above. Run the same scan locally with:
+
+<!-- not run: needs Docker and pulls an image -->
+```
+docker run --rm -v "$PWD:/repo" -w /repo zricethezav/gitleaks:v8.30.1 detect --source /repo --redact --no-banner
+```
 
 ## How a change is made
 
@@ -62,14 +80,14 @@ way to learn that the gates are not a ritual performed once.
 5. **Open one pull request per change**, with the template's checklist
    answered. The template is the mechanism for the rules no script can measure.
 
-`main` is protected: a pull request is required, every status check has to pass,
-force pushes and deletions are refused, history stays linear, and none of it is
-waived for administrators. That is a repository setting rather than a test,
+The repository is public, and `main` is protected: a pull request is required, every status
+check has to pass, force pushes and deletions are refused, history stays
+linear, and none of it is waived for administrators. That is a repository setting rather than a test,
 because a test that proves it would need a credential to pass and would fail for
 the wrong reasons. It is the one rule here enforced by something the suite
 cannot see. `python scripts/forge.py roykollensvendsen/xbox-mcp` in the `start-repo` skill is what
-applies it, and it says plainly when the forge refuses — branch protection needs
-a public repository or a paid plan.
+applies it; run it again after a new check is added, so that check is
+required too.
 
 A pull request lands by rebase, and by nothing else. Every commit on a branch
 therefore arrives on `main` individually, so write each one to stand alone:
