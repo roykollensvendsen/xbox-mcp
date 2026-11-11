@@ -12,6 +12,8 @@ import asyncio
 import json
 import os
 import pathlib
+import threading
+from http.server import HTTPServer
 
 import httpx
 import pytest
@@ -234,3 +236,66 @@ def test_tokens_are_written_readable_by_the_owner_alone(tmp_path):
     cloud.write_tokens(tokens, '{"x": 1}')
     assert tokens.stat().st_mode & 0o777 == 0o600
     assert tokens.parent.stat().st_mode & 0o777 == 0o700
+
+
+TOKENS = {
+    "token_type": "bearer",
+    "expires_in": 3600,
+    "scope": "Xboxlive.signin Xboxlive.offline_access",
+    "access_token": "old-access",
+    "refresh_token": "old-refresh",
+    "user_id": "u1",
+}
+
+
+class RefreshingAuth:
+    """The library's sign-in manager, refreshing to a new token without reaching Microsoft."""
+
+    def __init__(self, *_args):
+        self.oauth = None
+
+    async def refresh_tokens(self):
+        self.oauth = self.oauth.model_copy(update={"access_token": "new-access"})
+
+
+def test_tokens_the_library_refreshes_are_written_back_for_the_owner_alone(tmp_path, monkeypatch):
+    tokens = tmp_path / "tokens.json"
+    cloud.write_tokens(tokens, json.dumps(TOKENS))
+    monkeypatch.setattr(cloud, "AuthenticationManager", RefreshingAuth)
+    monkeypatch.setattr(cloud, "SignedSession", lambda: None)
+    monkeypatch.setattr(cloud, "XboxLiveClient", lambda _auth: Recorder())
+    assert asyncio.run(CloudConsole(tokens=tokens).consoles())[0].name == "Xbox"
+    assert json.loads(tokens.read_text())["access_token"] == "new-access"  # noqa: S105 - a stand-in, no real token
+    assert tokens.stat().st_mode & 0o777 == 0o600
+
+
+def test_a_damaged_token_file_says_to_sign_in_again(tmp_path):
+    tokens = tmp_path / "tokens.json"
+    cloud.write_tokens(tokens, "not json")
+    with pytest.raises(SignedOutError) as raised:
+        asyncio.run(CloudConsole(tokens=tokens).consoles())
+    assert "xbox-mcp sign-in" in str(raised.value.say)
+
+
+def _redirect(query):
+    cloud._Callback.code = None  # noqa: SLF001
+    server = HTTPServer(("127.0.0.1", 0), cloud._Callback)  # noqa: SLF001
+    thread = threading.Thread(target=server.handle_request)
+    thread.start()
+    reply = httpx.get(f"http://127.0.0.1:{server.server_port}/auth/callback{query}")
+    thread.join()
+    server.server_close()
+    return reply, cloud._Callback.code  # noqa: SLF001
+
+
+def test_the_sign_in_redirect_takes_the_code_and_shows_no_secret():
+    reply, code = _redirect("?code=abc")
+    assert code == "abc"
+    assert reply.status_code == 200
+    assert "abc" not in reply.text
+
+
+def test_a_redirect_without_a_code_is_a_failed_sign_in():
+    reply, code = _redirect("?error=access_denied")
+    assert code is None
+    assert reply.status_code == 400
