@@ -61,7 +61,10 @@ cd ~/xbox-mcp && uv run xbox-mcp sign-in
 It prints a link to Microsoft's sign-in page and opens it in the browser. Sign
 in with the Microsoft account the Xbox uses, and allow the access it asks for.
 The page then sends the browser back to this computer, and the terminal says
-"Signed in" and names the consoles on the account. The sign-in is kept in
+"Signed in" and names the consoles on the account. If another program already
+uses port 8080, the terminal says so first. The browser then ends on a page
+that fails or shows that other program; copy the whole address from the
+address bar and paste it into the terminal, which does not show it. The sign-in is kept in
 `~/.config/xbox-mcp/tokens.json`, readable by you alone, and is never shown,
 logged or sent to the voice. No Azure app registration is needed
 ([ADR-XB-001](decisions/ADR-XB-001-reach-the-xbox-through-microsofts-cloud.md)).
