@@ -29,7 +29,7 @@ Microsoft's cloud; why, and what it reuses, is in [`decisions/`](decisions/READM
    `tv_input` tool.
 5. **The Microsoft sign-in tokens are never printed, copied, read by an
    assistant, logged or committed.** They live in `~/.config/xbox-mcp`,
-   readable by the owner alone. The owner signs in himself, in a browser.
+   readable by the owner alone. The owner signs in on their own, in a browser.
 6. **Nothing about the owner's home is committed**: no home-network address,
    hardware address, room name, console name, account name or email address.
    Docs say "the living-room TV"; the room's own name lives only in the local

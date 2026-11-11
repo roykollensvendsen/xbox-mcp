@@ -12,3 +12,5 @@ read whenever a decision record is written and when a phase ends.
 | A release workflow and publishing | The first release someone outside will install | A published name is claimed and a published version cannot be reused |
 | `CODEOWNERS` | A second person who reviews | It would name one person as the owner of everything |
 | `pre-commit` as a requirement rather than an option | A second contributor | The gates run in CI, and a hook one person installs is a hook one person maintains |
+| Local SmartGlass (UDP on the home network) as well as the cloud | A test on this console shows it still answers locally, or the cloud route is withdrawn | Its library was archived in 2021 and was documented for the Xbox One; nothing shows a Series console answers it (ADR-XB-001) |
+| Our own Azure app registration for the Microsoft sign-in | Microsoft stops accepting the library's public client id | It needs an Azure directory, whose sign-up may ask for a payment card, which is the owner's decision (ADR-XB-001) |
