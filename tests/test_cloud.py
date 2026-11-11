@@ -9,11 +9,14 @@ refuses one; and the source names no other part of the library.
 
 import ast
 import asyncio
+import base64
+import hashlib
 import json
 import os
 import pathlib
 import threading
 from http.server import HTTPServer
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
@@ -323,13 +326,25 @@ def test_the_paste_instructions_say_what_the_owner_will_see_and_do():
     assert "not be shown" in text
 
 
+MADE = []
+
+
 class SigningAuth(RefreshingAuth):
     """The library's sign-in manager, handing out tokens for a code without reaching Microsoft."""
+
+    def __init__(self, *args, verifier):
+        super().__init__(*args)
+        self.verifier = verifier
+        MADE.append(self)
 
     def generate_authorization_url(self):
         return "https://login.example.com/authorize"
 
     async def request_tokens(self, code):
+        if code == "spent":
+            request = httpx.Request("POST", "https://login.live.com/oauth20_token.srf")
+            response = httpx.Response(400, request=request)
+            raise httpx.HTTPStatusError(code, request=request, response=response)
         self.oauth = None if code == "refused" else cloud.OAuth2TokenResponse.model_validate(TOKENS)
 
 
@@ -341,12 +356,15 @@ class Session:
         return None
 
 
+OPENED = []
+
+
 def _sign_in(tmp_path, monkeypatch, pasted):
-    monkeypatch.setattr(cloud, "AuthenticationManager", SigningAuth)
+    monkeypatch.setattr(cloud, "PkceAuth", SigningAuth)
     monkeypatch.setattr(cloud, "SignedSession", Session)
     monkeypatch.setattr(cloud, "XboxLiveClient", lambda _auth: Recorder())
     monkeypatch.setattr(cloud, "_listen", lambda: None)
-    monkeypatch.setattr(cloud.webbrowser, "open", lambda _url: True)
+    monkeypatch.setattr(cloud.webbrowser, "open", OPENED.append)
     said = []
     tokens = tmp_path / "xbox-mcp" / "tokens.json"
     ok = asyncio.run(cloud.sign_in(tokens, said.append, ask=lambda _prompt: pasted))
@@ -376,3 +394,68 @@ def test_a_sign_in_microsoft_refuses_says_to_run_it_again(tmp_path, monkeypatch)
     assert ok is False
     assert "Run xbox-mcp sign-in again" in said
     assert not tokens.exists()
+
+
+def test_a_code_microsoft_will_not_redeem_says_to_run_it_again(tmp_path, monkeypatch):
+    ok, said, tokens = _sign_in(tmp_path, monkeypatch, "http://localhost:8080/auth/callback?code=spent")
+    assert ok is False
+    assert "Run xbox-mcp sign-in again" in said
+    assert not tokens.exists()
+
+
+def _s256(verifier):
+    return base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+
+
+def test_a_pkce_verifier_is_long_random_and_its_challenge_is_its_s256():
+    verifier, challenge = cloud.pkce_pair()
+    assert 43 <= len(verifier) <= 128
+    assert set(verifier) <= set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+    assert challenge == _s256(verifier)
+    assert cloud.pkce_pair()[0] != verifier
+
+
+def test_a_sign_in_link_carries_the_challenge_for_the_verifier_it_redeems_with(tmp_path, monkeypatch):
+    MADE.clear()
+    OPENED.clear()
+    ok, _, _ = _sign_in(tmp_path, monkeypatch, "http://localhost:8080/auth/callback?code=c1")
+    assert ok is True
+    query = parse_qs(urlparse(OPENED[0]).query)
+    assert query["code_challenge_method"] == ["S256"]
+    assert query["code_challenge"] == [_s256(MADE[0].verifier)]
+
+
+class TokenEndpoint:
+    """Microsoft's token endpoint, as far as the library posts to it, recording what it was sent."""
+
+    def __init__(self):
+        self.sent = []
+
+    async def post(self, url, data):
+        self.sent.append(data)
+        return httpx.Response(200, json=TOKENS, request=httpx.Request("POST", url))
+
+
+def test_a_sign_in_code_is_redeemed_only_with_its_pkce_verifier():
+    endpoint = TokenEndpoint()
+    auth = cloud.PkceAuth(endpoint, cloud.CLIENT_ID, "", cloud.REDIRECT_URI, verifier="v" * 50)
+    oauth = asyncio.run(auth.request_oauth_token("c1"))
+    assert oauth.refresh_token == "old-refresh"  # noqa: S105 - a stand-in, no real token
+    (sent,) = endpoint.sent
+    assert sent["code_verifier"] == "v" * 50
+    assert sent["code"] == "c1"
+    assert "client_secret" not in sent
+
+
+def test_the_owner_may_paste_the_bare_code_with_spaces_around_it():
+    assert cloud.code_from("  M.C5_BAY.2.U.ab-cd!*$ \n") == "M.C5_BAY.2.U.ab-cd!*$"
+    assert cloud.code_from("not a code") is None
+
+
+def test_a_sign_in_from_another_device_asks_for_the_paste_without_listening(monkeypatch):
+    monkeypatch.setattr(cloud, "_listen", lambda: pytest.fail("listened"))
+    monkeypatch.setattr(cloud.webbrowser, "open", lambda _url: True)
+    said = []
+    code = asyncio.run(cloud._await_code("https://x", said.append, lambda _p: "c9", other_device=True))  # noqa: SLF001
+    assert code == "c9"
+    assert "another device" in "\n".join(said)

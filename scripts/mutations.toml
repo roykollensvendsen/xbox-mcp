@@ -170,3 +170,9 @@ name = "a token file others can read is refused"
 file = "src/xbox_mcp/drivers/cloud.py"
 find = 'if path\.stat\(\)\.st_mode & \(stat\.S_IRWXG \| stat\.S_IRWXO\):'
 replace = 'if False:'
+
+[[rule]]
+name = "a sign-in code is redeemed only with its pkce verifier"
+file = "src/xbox_mcp/drivers/cloud.py"
+find = '"code_verifier": self\.verifier,'
+replace = ''
