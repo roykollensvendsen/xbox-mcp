@@ -8,6 +8,7 @@ import sys
 
 import pytest
 
+from xbox_mcp import tv
 from xbox_mcp.cli import tv_from
 from xbox_mcp.drivers.tv_plugin import TvPlugin
 from xbox_mcp.settings import SettingsError
@@ -82,3 +83,20 @@ def test_the_tv_table_needs_a_command_and_a_name():
         tv_from({"name": "the den"})
     plugin = tv_from({"command": ["tv-mcp", "serve"], "name": "the den"})
     assert plugin.device == "Xbox"
+
+
+#: tv-mcp's tv_status answer for one TV, in the shape it really sends (seen 2026-11-11).
+REAL = {"success": True, "say": "...", "tvs": [{"tv": "the living-room TV", "state": "on", "inputs": []}]}
+
+
+def test_the_screen_is_read_from_the_tv_in_tv_mcps_list():
+    assert tv.screen_of(REAL) == "on"
+    assert tv.screen_of({**REAL, "tvs": [{**REAL["tvs"][0], "state": "off"}]}) == "off"
+    assert tv.screen_of({**REAL, "tvs": [{**REAL["tvs"][0], "screen": "off"}]}) == "off", "screen wins"
+
+
+def test_a_tv_answer_that_names_no_single_tv_counts_as_unknown():
+    two = {**REAL, "tvs": [REAL["tvs"][0], REAL["tvs"][0]]}
+    assert tv.screen_of(two) is None
+    assert tv.screen_of({"success": False, "say": "..."}) is None
+    assert tv.screen_of({"tvs": "on"}) is None
