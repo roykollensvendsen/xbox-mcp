@@ -23,7 +23,7 @@ from xbox_mcp.tv import SimulatedTvPlugin, show_xbox
 
 #: A sentence that tells the owner what to do: it opens with one of these.
 NEXT_STEP = re.compile(
-    r"(?:^|[.?!]\s+)(?:Try|Ask|Check|Set|Switch|Say|Name|Wake|Install|Add|Use|The owner has to run)\b"
+    r"(?:^|[.?!]\s+)(?:Try|Ask|Check|Set|Switch|Say|Name|Wake|Install|Add|Use|In a terminal|Sign in again)\b"
 )
 LISTED = Settings(titles=("Forza Horizon 5", "Starfield"))
 

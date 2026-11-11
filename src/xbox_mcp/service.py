@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from xbox_mcp.console import (
     HOME_AUMID,
+    SIGN_IN_COMMAND,
     App,
     Cloud,
     Console,
@@ -37,10 +38,7 @@ UNREACHABLE = (
     "Try again in a minute."
 )
 #: What the voice hears when there is no Microsoft sign-in.
-SIGNED_OUT = (
-    "The Xbox plugin is not signed in to Microsoft. "
-    "The owner has to run xbox-mcp sign-in on the computer, in a browser."
-)
+SIGNED_OUT = f"The Xbox plugin is not signed in to Microsoft. In a terminal, run {SIGN_IN_COMMAND}"
 #: What the owner checks when Microsoft refuses a command.
 REMOTE_FEATURES = (
     "Check that remote features are on: Settings, Devices & connections (Enheter og tilkoblinger), "
