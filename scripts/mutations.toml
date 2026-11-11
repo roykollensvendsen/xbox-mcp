@@ -176,3 +176,9 @@ name = "a sign-in code is redeemed only with its pkce verifier"
 file = "src/xbox_mcp/drivers/cloud.py"
 find = '"code_verifier": self\.verifier,'
 replace = ''
+
+[[rule]]
+name = "a code is never asked for while another program holds the redirect port"
+file = "src/xbox_mcp/drivers/cloud.py"
+find = 'if server is None and not other_device:'
+replace = 'if False:'

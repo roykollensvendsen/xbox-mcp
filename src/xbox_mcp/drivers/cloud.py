@@ -30,9 +30,19 @@ import httpx
 from pythonxbox.api.client import XboxLiveClient
 from pythonxbox.authentication.manager import AuthenticationManager
 from pythonxbox.authentication.models import OAuth2TokenResponse
+from pythonxbox.common.exceptions import AuthenticationException
 from pythonxbox.common.signed_session import SignedSession
 
-from xbox_mcp.console import App, Console, ConsoleStatus, Power, Sent, SignedOutError, UnreachableError
+from xbox_mcp.console import (
+    SIGN_IN_COMMAND,
+    App,
+    Console,
+    ConsoleStatus,
+    Power,
+    Sent,
+    SignedOutError,
+    UnreachableError,
+)
 
 if TYPE_CHECKING:
     import pathlib
@@ -67,10 +77,11 @@ POWER: dict[str, Power] = {
     "Unknown": "unknown",
 }
 HTTP_UNAUTHORIZED, HTTP_FORBIDDEN = 401, 403
-SIGN_IN = "Sign in again: run xbox-mcp sign-in in a terminal on the computer."
-NOT_SIGNED_IN = (
-    "The Xbox plugin is not signed in to Microsoft yet. Run xbox-mcp sign-in in a terminal on the computer."
-)
+SIGN_IN = f"Sign in again: in a terminal on the computer, run {SIGN_IN_COMMAND}"
+NOT_SIGNED_IN = f"The Xbox plugin is not signed in to Microsoft yet. In a terminal, run {SIGN_IN_COMMAND}"
+EXPIRED = f"The Xbox plugin's Microsoft sign-in has expired. {SIGN_IN}"
+#: Microsoft's answers to a refresh token it no longer takes.
+REFUSED_REFRESH = frozenset({400, 401, 403})
 DAMAGED = f"The Microsoft sign-in file is damaged. {SIGN_IN}"
 
 
@@ -187,6 +198,16 @@ def read_tokens(path: pathlib.Path) -> OAuth2TokenResponse:
         raise _signed_out(DAMAGED) from error
 
 
+async def _refreshed(auth: AuthenticationManager) -> None:
+    """Refresh the sign-in; one Microsoft no longer takes is said as expired, with what to do."""
+    try:
+        await auth.refresh_tokens()
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code in REFUSED_REFRESH:
+            raise _signed_out(EXPIRED) from error
+        raise
+
+
 class CloudConsole:
     """The console calls of :class:`xbox_mcp.console.Cloud`, through Microsoft's cloud."""
 
@@ -204,7 +225,7 @@ class CloudConsole:
             auth = AuthenticationManager(SignedSession(), CLIENT_ID, "", REDIRECT_URI)
             auth.oauth = read_tokens(self._tokens)
             self._saved = auth.oauth.model_dump_json()
-            await auth.refresh_tokens()
+            await _refreshed(auth)
             self._auth, self._api = auth, AllowList(XboxLiveClient(auth))
             self._keep()
         return self._api
@@ -224,6 +245,8 @@ class CloudConsole:
                 answer = await work(await self._client())
         except UnreachableError:
             raise
+        except AuthenticationException as error:
+            raise _signed_out(EXPIRED) from error
         except (httpx.HTTPError, TimeoutError, ValueError) as error:
             raise _refused(error) from error
         self._keep()
@@ -335,27 +358,24 @@ PASTE = (
     "Copy the whole address from the browser's address bar (it starts with http://localhost:{port}/), "
     "or just the part after code=, and paste it here. It will not be shown."
 )
-BUSY = "Another program on this computer uses port {port}, so the sign-in cannot come back here by itself."
-OTHER_DEVICE = "You may open the link on another device, such as your phone, and sign in there."
+BUSY = (
+    "Another program on this computer uses port {port}, where Microsoft sends the sign-in back, "
+    "so that program would see the sign-in code. I stopped before showing the sign-in link.\n"
+    "Sign in from your phone instead. Run: {command} --other-device"
+)
+OTHER_DEVICE = "Open the link on another device, such as your phone, and sign in there, not on this computer."
 
 
-async def _pasted_code(lead: str, ask: Callable[[str], str], say: Callable[[str], None]) -> str | None:
-    """The sign-in code the owner pastes, after `lead` says why it is pasted."""
-    say(lead)
+async def _pasted_code(ask: Callable[[str], str], say: Callable[[str], None]) -> str | None:
+    """The sign-in code the owner pastes from another device's browser."""
+    say(OTHER_DEVICE)
     say(PASTE.format(port=REDIRECT_PORT))
     return code_from(await asyncio.to_thread(ask, "Address or code: "))
 
 
-async def _await_code(
-    url: str, say: Callable[[str], None], ask: Callable[[str], str], *, other_device: bool = False
-) -> str | None:
-    """Open `url` in the browser, and the sign-in code Microsoft sends back, by listener or by paste."""
-    if other_device:
-        return await _pasted_code(OTHER_DEVICE, ask, say)
-    server = _listen()
+async def _listened_code(url: str, server: HTTPServer, say: Callable[[str], None]) -> str | None:
+    """Open `url` in this computer's browser, and the code Microsoft sends back to the listener."""
     webbrowser.open(url)
-    if server is None:
-        return await _pasted_code(BUSY.format(port=REDIRECT_PORT), ask, say)
     say(f"Waiting up to {int(SIGN_IN_WITHIN // 60)} minutes for you to sign in, in the browser...")
     return await asyncio.to_thread(_wait_for_code, server)
 
@@ -378,21 +398,28 @@ async def sign_in(
 ) -> bool:
     """The owner signs in to Microsoft in a browser; the tokens go to `tokens`, never to the screen.
 
-    The redirect comes back to a listener on this computer, or, when another
-    program holds the port, through the address the owner pastes, unshown.
+    The redirect comes back to a listener on this computer. When another
+    program holds the port, it would see the code, so the sign-in stops and
+    points to `other_device`: the owner signs in on a phone and pastes the
+    address it ends on, unshown (ADR-XB-001).
     """
     async with SignedSession() as session:
         verifier, challenge = pkce_pair()
         auth = PkceAuth(session, CLIENT_ID, "", REDIRECT_URI, verifier=verifier)
         url = with_challenge(auth.generate_authorization_url(), challenge)
+        server = None if other_device else _listen()
+        # RULE: a code is never asked for while another program holds the redirect port
+        if server is None and not other_device:
+            say(BUSY.format(port=REDIRECT_PORT, command=SIGN_IN_COMMAND))
+            return False
         say(f"Open this page and sign in with the Microsoft account the Xbox uses:\n\n  {url}\n")
-        code = await _await_code(url, say, ask, other_device=other_device)
+        code = await (_listened_code(url, server, say) if server else _pasted_code(ask, say))
         if not code:
-            say("No sign-in code came back. Run xbox-mcp sign-in again, and sign in within five minutes.")
+            say(f"No sign-in code came back within five minutes. Run {SIGN_IN_COMMAND} again.")
             return False
         oauth = await _redeemed(auth, code)
         if oauth is None:
-            say("Microsoft did not accept the sign-in. Run xbox-mcp sign-in again.")
+            say(f"Microsoft did not accept the sign-in. Run {SIGN_IN_COMMAND} again.")
             return False
         write_tokens(tokens, oauth.model_dump_json())
         consoles = await AllowList(XboxLiveClient(auth)).smartglass.get_console_list(

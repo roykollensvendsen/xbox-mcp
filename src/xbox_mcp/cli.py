@@ -57,16 +57,21 @@ def _sign_in(args: argparse.Namespace) -> int:  # pragma: no cover - the owner s
     return 0 if asyncio.run(sign_in(tokens_path(path), say, other_device=args.other_device)) else 1
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Parse arguments and dispatch. Returns a process exit code."""
-    parser = argparse.ArgumentParser(prog="xbox-mcp", description=__doc__)
-    parser.add_argument("command", choices=COMMANDS)
-    parser.add_argument("--simulate", action="store_true", help="a pretend Xbox, no network")
-    parser.add_argument("--settings-file", help="instead of ~/.config/xbox-mcp/config.toml")
-    parser.add_argument(
+def parser() -> argparse.ArgumentParser:
+    """The command line's arguments."""
+    found = argparse.ArgumentParser(prog="xbox-mcp", description=__doc__)
+    found.add_argument("command", choices=COMMANDS)
+    found.add_argument("--simulate", action="store_true", help="a pretend Xbox, no network")
+    found.add_argument("--settings-file", help="instead of ~/.config/xbox-mcp/config.toml")
+    found.add_argument(
         "--other-device", action="store_true", help="sign-in: open the link on another device, then paste"
     )
-    args = parser.parse_args(argv)
+    return found
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Parse arguments and dispatch. Returns a process exit code."""
+    args = parser().parse_args(argv)
     if args.command == "sign-in":  # pragma: no cover - the owner signs in, in a browser
         return _sign_in(args)
     try:

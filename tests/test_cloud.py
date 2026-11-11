@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import threading
 from http.server import HTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -26,8 +27,9 @@ from pythonxbox.api.provider.smartglass.models import (
     SmartglassConsoleList,
     SmartglassConsoleStatus,
 )
+from pythonxbox.common.exceptions import AuthenticationException
 
-from xbox_mcp.console import HOME_AUMID, SignedOutError, UnreachableError
+from xbox_mcp.console import HOME_AUMID, SIGN_IN_COMMAND, SignedOutError, UnreachableError
 from xbox_mcp.drivers import cloud
 from xbox_mcp.drivers.cloud import ALLOWED, AllowList, CloudConsole, NotAllowedError
 
@@ -161,6 +163,7 @@ def test_the_driver_source_names_no_other_part_of_the_library():
         "pythonxbox.authentication.manager.AuthenticationManager",
         "pythonxbox.authentication.models.OAuth2TokenResponse",
         "pythonxbox.common.signed_session.SignedSession",
+        "pythonxbox.common.exceptions.AuthenticationException",
     }, imported
     providers = {
         "smartglass",
@@ -310,13 +313,28 @@ def test_the_code_is_read_from_the_address_the_owner_pastes():
     assert cloud.code_from("") is None
 
 
-def test_a_port_another_program_holds_falls_back_to_pasting(monkeypatch):
+def test_a_port_another_program_holds_is_seen_as_held(monkeypatch):
     holder = HTTPServer(("127.0.0.1", 0), cloud._Callback)  # noqa: SLF001
     monkeypatch.setattr(cloud, "REDIRECT_PORT", holder.server_port)
     try:
         assert cloud._listen() is None  # noqa: SLF001
     finally:
         holder.server_close()
+
+
+def test_a_code_is_never_asked_for_while_another_program_holds_the_redirect_port(tmp_path, monkeypatch):
+    monkeypatch.setattr(cloud, "PkceAuth", SigningAuth)
+    monkeypatch.setattr(cloud, "SignedSession", Session)
+    monkeypatch.setattr(cloud, "_listen", lambda: None)
+    monkeypatch.setattr(cloud.webbrowser, "open", lambda _url: pytest.fail("opened a browser"))
+    said = []
+    tokens = tmp_path / "tokens.json"
+    ok = asyncio.run(cloud.sign_in(tokens, said.append, ask=lambda _p: pytest.fail("asked for a code")))
+    text = "\n".join(said)
+    assert ok is False
+    assert "login.example.com" not in text, "the link was shown, so it could be opened here"
+    assert f"{SIGN_IN_COMMAND} --other-device" in text
+    assert not tokens.exists()
 
 
 def test_the_paste_instructions_say_what_the_owner_will_see_and_do():
@@ -363,11 +381,11 @@ def _sign_in(tmp_path, monkeypatch, pasted):
     monkeypatch.setattr(cloud, "PkceAuth", SigningAuth)
     monkeypatch.setattr(cloud, "SignedSession", Session)
     monkeypatch.setattr(cloud, "XboxLiveClient", lambda _auth: Recorder())
-    monkeypatch.setattr(cloud, "_listen", lambda: None)
+    monkeypatch.setattr(cloud, "_listen", lambda: pytest.fail("listened"))
     monkeypatch.setattr(cloud.webbrowser, "open", OPENED.append)
     said = []
     tokens = tmp_path / "xbox-mcp" / "tokens.json"
-    ok = asyncio.run(cloud.sign_in(tokens, said.append, ask=lambda _prompt: pasted))
+    ok = asyncio.run(cloud.sign_in(tokens, said.append, ask=lambda _prompt: pasted, other_device=True))
     return ok, "\n".join(said), tokens
 
 
@@ -385,21 +403,21 @@ def test_a_sign_in_keeps_the_tokens_for_the_owner_alone_and_never_prints_them(tm
 def test_a_sign_in_with_no_code_says_to_run_it_again(tmp_path, monkeypatch):
     ok, said, tokens = _sign_in(tmp_path, monkeypatch, "http://localhost:8080/auth/callback?error=x")
     assert ok is False
-    assert "Run xbox-mcp sign-in again" in said
+    assert f"Run {SIGN_IN_COMMAND} again" in said
     assert not tokens.exists()
 
 
 def test_a_sign_in_microsoft_refuses_says_to_run_it_again(tmp_path, monkeypatch):
     ok, said, tokens = _sign_in(tmp_path, monkeypatch, "http://localhost:8080/auth/callback?code=refused")
     assert ok is False
-    assert "Run xbox-mcp sign-in again" in said
+    assert f"Run {SIGN_IN_COMMAND} again" in said
     assert not tokens.exists()
 
 
 def test_a_code_microsoft_will_not_redeem_says_to_run_it_again(tmp_path, monkeypatch):
     ok, said, tokens = _sign_in(tmp_path, monkeypatch, "http://localhost:8080/auth/callback?code=spent")
     assert ok is False
-    assert "Run xbox-mcp sign-in again" in said
+    assert f"Run {SIGN_IN_COMMAND} again" in said
     assert not tokens.exists()
 
 
@@ -418,9 +436,10 @@ def test_a_pkce_verifier_is_long_random_and_its_challenge_is_its_s256():
 def test_a_sign_in_link_carries_the_challenge_for_the_verifier_it_redeems_with(tmp_path, monkeypatch):
     MADE.clear()
     OPENED.clear()
-    ok, _, _ = _sign_in(tmp_path, monkeypatch, "http://localhost:8080/auth/callback?code=c1")
+    ok, said, _ = _sign_in(tmp_path, monkeypatch, "http://localhost:8080/auth/callback?code=c1")
     assert ok is True
-    query = parse_qs(urlparse(OPENED[0]).query)
+    link = re.search(r"https://\S+", said).group(0)
+    query = parse_qs(urlparse(link).query)
     assert query["code_challenge_method"] == ["S256"]
     assert query["code_challenge"] == [_s256(MADE[0].verifier)]
 
@@ -452,10 +471,35 @@ def test_the_owner_may_paste_the_bare_code_with_spaces_around_it():
     assert cloud.code_from("not a code") is None
 
 
-def test_a_sign_in_from_another_device_asks_for_the_paste_without_listening(monkeypatch):
-    monkeypatch.setattr(cloud, "_listen", lambda: pytest.fail("listened"))
-    monkeypatch.setattr(cloud.webbrowser, "open", lambda _url: True)
-    said = []
-    code = asyncio.run(cloud._await_code("https://x", said.append, lambda _p: "c9", other_device=True))  # noqa: SLF001
-    assert code == "c9"
-    assert "another device" in "\n".join(said)
+def test_a_sign_in_from_another_device_asks_for_the_paste_without_listening(tmp_path, monkeypatch):
+    ok, said, _ = _sign_in(tmp_path, monkeypatch, "c9")
+    assert ok is True
+    assert "another device" in said
+
+
+class ExpiredAuth(RefreshingAuth):
+    """The library's sign-in manager, when Microsoft no longer takes the saved refresh token."""
+
+    async def refresh_tokens(self):
+        request = httpx.Request("POST", "https://login.live.com/oauth20_token.srf")
+        response = httpx.Response(400, json={"error": "invalid_grant"}, request=request)
+        error = "invalid_grant"
+        raise httpx.HTTPStatusError(error, request=request, response=response)
+
+
+def test_an_expired_sign_in_says_to_sign_in_again_with_the_command(tmp_path, monkeypatch):
+    tokens = tmp_path / "tokens.json"
+    cloud.write_tokens(tokens, json.dumps(TOKENS))
+    monkeypatch.setattr(cloud, "AuthenticationManager", ExpiredAuth)
+    monkeypatch.setattr(cloud, "SignedSession", lambda: None)
+    with pytest.raises(SignedOutError) as raised:
+        asyncio.run(CloudConsole(tokens=tokens).consoles())
+    assert "expired" in raised.value.say
+    assert SIGN_IN_COMMAND in raised.value.say
+
+
+def test_a_sign_in_the_library_refuses_says_to_sign_in_again():
+    driver, _ = _driver(fails=AuthenticationException("Failed to authorize you!"))
+    with pytest.raises(SignedOutError) as raised:
+        asyncio.run(driver.status("F4000000000000A1"))
+    assert SIGN_IN_COMMAND in raised.value.say

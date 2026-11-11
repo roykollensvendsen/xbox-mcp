@@ -14,6 +14,9 @@ from typing import Literal, Protocol
 #: The console's power, as the plugin speaks of it. "updating" is asleep with an update running.
 Power = Literal["on", "asleep", "updating", "off", "unknown"]
 
+#: The command that signs the plugin in to Microsoft, as the owner pastes it into a terminal.
+SIGN_IN_COMMAND = "cd ~/xbox-mcp && uv run xbox-mcp sign-in"
+
 #: The app in focus on the home screen, as the cloud names it.
 HOME_AUMID = "Microsoft.Xbox.Dashboard_8wekyb3d8bbwe!Xbox.Dashboard.Application"
 
