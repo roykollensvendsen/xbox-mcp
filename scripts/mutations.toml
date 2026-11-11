@@ -14,3 +14,27 @@
 # file = "src/xbox_mcp/somewhere.py"
 # find = 'if limit_exceeded:'
 # replace = 'if False:'
+
+[[rule]]
+name = "a commit message never links to a Claude session"
+file = "scripts/no_session_links.py"
+find = 'if SESSION\.search\(message\):'
+replace = 'if False:'
+
+[[rule]]
+name = "a home-network address is never committed"
+file = "scripts/private_data_scan.py"
+find = 'found \+= \[f"home-network address \{m\}" for m in PRIVATE_IPV4\.findall\(text\)\]'
+replace = 'pass'
+
+[[rule]]
+name = "an email address is never committed"
+file = "scripts/private_data_scan.py"
+find = 'found \+= \[f"email address \{m\}" for m in emails\]'
+replace = 'pass'
+
+[[rule]]
+name = "a value from the settings file is never committed"
+file = "scripts/private_data_scan.py"
+find = 'found \+= \[f"a value from \{SETTINGS\.name\}" for s in secrets if s in text\]'
+replace = 'pass'

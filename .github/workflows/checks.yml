@@ -21,15 +21,18 @@ jobs:
   commits:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Dependabot writes a body line carrying two full commit hashes, which no
-    # length rule survives, and its messages are not a person's to fix.
     # A direct push to main was linted by nothing: the range below only exists
     # on a pull request, so the job skipped itself and the local hook, which
     # --no-verify bypasses, was the only check. The range is now worked out for
-    # both events. Dependabot writes a body line carrying two full commit
+    # both events.
+    #
+    # The job always runs, because branch protection requires it and a skipped
+    # job never reports. Dependabot writes a body line carrying two full commit
     # hashes, which no length rule survives, and its messages are not a
-    # person's to fix.
-    if: github.actor != 'dependabot[bot]'
+    # person's to fix, so only the two message-style steps skip, and only when
+    # Dependabot wrote every commit in the range. That is asked of the commits,
+    # not of who started the run, so a rerun or the push to main after the
+    # merge skips the same way.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,13 +60,62 @@ jobs:
             # to have been written without care.
             echo "range=${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
-      - uses: crate-ci/committed@faeed42f2e10c244533a01525f13c4d8b6ce383f # v1.1.11
+      - name: Whether Dependabot wrote every commit
+        id: authors
+        run: |
+          range='${{ steps.range.outputs.range }}'
+          case "$range" in *..*) log="$range" ;; *) log="-1 $range" ;; esac
+          if git log --format=%an $log | grep -qv '^dependabot\[bot\]$'; then
+            echo "only_dependabot=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "only_dependabot=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: crate-ci/committed@02af07ed1d11ad69a96ab75f08c9831a4e2c00da # v1.1.12
+        if: steps.authors.outputs.only_dependabot != 'true'
         with:
           args: --no-merge-commit
           commits: ${{ steps.range.outputs.range }}
       # committed's own imperative rule flags nothing, so this is what does.
       - name: Subjects in the imperative
+        if: steps.authors.outputs.only_dependabot != 'true'
         run: python scripts/imperative.py ${{ steps.range.outputs.range }}
+      # Only the commits this event adds: older history is kept as it is.
+      - name: No links to a Claude session
+        run: python scripts/no_session_links.py ${{ steps.range.outputs.range }}
+
+  # A key, token or password anywhere in the history, not only in this change:
+  # the repository may be made public, and a secret deleted later is still in
+  # every clone. The image is pinned to its digest, as the actions are to a commit.
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0       # every commit, so the whole history is scanned
+      - name: No secrets in any commit
+        # --redact keeps a found secret out of the public log.
+        run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo
+          zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          detect --source /repo --redact --no-banner --exit-code 1
+
+  # Each marked rule switched off in turn: the test named after it has to go
+  # red, or the rule is guarded by nothing. One Python version is enough, since
+  # this asks whether the tests can fail, not whether the code runs everywhere.
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          version: "0.12.13"
+          python-version: "3.13"
+      - run: uv sync --locked --all-extras
+      - name: Each rule's own test can fail
+        run: uv run python scripts/mutate.py
 
   checks:
     runs-on: ubuntu-latest
@@ -77,7 +129,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0         # the last-checked rule reads each page's commit date
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true     # setup-python's own cache covers pip, not uv
           version: "0.12.13"     # pin uv itself
