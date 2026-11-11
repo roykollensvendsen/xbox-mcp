@@ -92,3 +92,15 @@ name = "every simulated answer says simulated first"
 file = "src/xbox_mcp/server.py"
 find = 'if self\._simulated:'
 replace = 'if False:'
+
+[[rule]]
+name = "only the tv status and input tools are ever called"
+file = "src/xbox_mcp/tv.py"
+find = 'if tool not in self\.TOOLS:'
+replace = 'if False:'
+
+[[rule]]
+name = "a tv that is not on is never sent an input"
+file = "src/xbox_mcp/tv.py"
+find = 'return _alone\("The TV did not come on, so I left it alone\."\)'
+replace = 'break'
