@@ -30,12 +30,41 @@ $ uv run xbox-mcp serve --simulate < /dev/null
 | Tool | Does | Changes anything |
 |---|---|---|
 | `xbox_status` | Whether the Xbox is on, asleep or off, and the game or app it runs | No |
+| `xbox_power_request` | Asks whether to wake the Xbox or put it to sleep, and hands out a token; sends nothing | No |
+| `xbox_power_confirm` | With that token, within 30 seconds and once only: wakes or sleeps the Xbox, reads it back, and after a wake switches its TV to the Xbox | Wakes or sleeps the Xbox |
 
 Every answer has `say`, read aloud as it is, and `success` with `outcome`
 for a program: `done`, `unreachable` (Microsoft's cloud did not answer),
 `signed_out` (no Microsoft sign-in yet), `refused`, `not_confirmed` (a command
 was taken, but the console's status does not show it yet), or `working` (still
 going after the voice's time, and carrying on).
+
+Which actions are risky is the owner's call (the plugin standard's rule 7).
+Waking and sleeping are: each is a question read aloud, and then a confirm
+with a single-use token after the owner's spoken yes. Between 22:00 and 07:00
+a wake is refused unless the TV the Xbox is plugged into is already on,
+because waking the Xbox switches that TV on through HDMI-CEC. By day, the
+question says the TV will come on too.
+
+## Settings
+
+In `~/.config/xbox-mcp/config.toml`, never in this repository:
+
+<!-- not run: a settings file, not a command -->
+```toml
+[tv]
+command = ["uv", "run", "--directory", "~/tv-mcp", "tv-mcp", "serve"]
+name = "the living-room TV"   # the TV, as the TV plugin knows it
+device = "Xbox"               # the device on its input, as the TV plugin knows it
+
+[night]                       # when a wake needs that TV already on
+starts = 22
+ends = 7
+```
+
+The TV is reached through the TV plugin's own tools
+([tv-mcp](https://github.com/roykollensvendsen/tv-mcp)): only `tv_status` and
+`tv_input`, never a power tool.
 
 ## Before you start
 
