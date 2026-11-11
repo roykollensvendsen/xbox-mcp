@@ -339,18 +339,23 @@ BUSY = "Another program on this computer uses port {port}, so the sign-in cannot
 OTHER_DEVICE = "You may open the link on another device, such as your phone, and sign in there."
 
 
+async def _pasted_code(lead: str, ask: Callable[[str], str], say: Callable[[str], None]) -> str | None:
+    """The sign-in code the owner pastes, after `lead` says why it is pasted."""
+    say(lead)
+    say(PASTE.format(port=REDIRECT_PORT))
+    return code_from(await asyncio.to_thread(ask, "Address or code: "))
+
+
 async def _await_code(
     url: str, say: Callable[[str], None], ask: Callable[[str], str], *, other_device: bool = False
 ) -> str | None:
     """Open `url` in the browser, and the sign-in code Microsoft sends back, by listener or by paste."""
-    server = None if other_device else _listen()
+    if other_device:
+        return await _pasted_code(OTHER_DEVICE, ask, say)
+    server = _listen()
+    webbrowser.open(url)
     if server is None:
-        say(OTHER_DEVICE if other_device else BUSY.format(port=REDIRECT_PORT))
-        say(PASTE.format(port=REDIRECT_PORT))
-    if not other_device:
-        webbrowser.open(url)
-    if server is None:
-        return code_from(await asyncio.to_thread(ask, "Address or code: "))
+        return await _pasted_code(BUSY.format(port=REDIRECT_PORT), ask, say)
     say(f"Waiting up to {int(SIGN_IN_WITHIN // 60)} minutes for you to sign in, in the browser...")
     return await asyncio.to_thread(_wait_for_code, server)
 
