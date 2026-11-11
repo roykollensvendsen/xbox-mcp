@@ -17,6 +17,8 @@ from typing import Any, ClassVar, Self
 TV_WITHIN = 6.0
 #: Seconds after a wake for HDMI-CEC to bring the TV's screen on.
 CEC_SETTLE = 4.0
+#: What the voice hears when the TV did not come on after a wake.
+NOT_ON = "The TV did not come on, so I left it alone. Switch it on and to the Xbox with its remote."
 #: Seconds between looks at the TV while it comes on.
 LOOK_EVERY = 1.0
 
@@ -62,12 +64,15 @@ class TvSwitch:
     async def show_xbox(self, settle: float) -> dict[str, Any]:
         """Wait up to `settle` seconds for the screen to come on, then switch it to the Xbox."""
         if "tv_input" not in await self._offered():
-            return _alone("The TV plugin does not offer to change inputs, so I left the TV alone.")
+            return _alone(
+                "The TV plugin does not offer to change inputs, so I left the TV alone. "
+                "Switch it to the Xbox with its remote."
+            )
         waited = 0.0
         while not await self.is_on():
             if waited >= settle:
                 # RULE: a tv that is not on is never sent an input
-                return _alone("The TV did not come on, so I left it alone.")
+                return _alone(NOT_ON)
             await asyncio.sleep(LOOK_EVERY)
             waited += LOOK_EVERY
         answer = await self.call("tv_input", {"source": self.device, "tv": self.tv}) or {}
@@ -141,11 +146,14 @@ async def show_xbox(tv: TvSwitch, settle: float = CEC_SETTLE) -> dict[str, Any]:
         return {
             "success": False,
             "outcome": "working",
-            "say": "The TV did not answer in time; ask it what it shows.",
+            "say": "The TV did not answer in time. Ask what it shows, or switch it with its remote.",
         }
     except Exception:  # noqa: BLE001 - the console woke; a TV failure is said, not raised
         return {
             "success": False,
             "outcome": "refused",
-            "say": "I could not reach the TV plugin, so I could not switch the TV.",
+            "say": (
+                "I could not reach the TV plugin, so I could not switch the TV. "
+                "Check the [tv] command in ~/.config/xbox-mcp/config.toml, or use the TV's remote."
+            ),
         }
