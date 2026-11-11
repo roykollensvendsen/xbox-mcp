@@ -77,12 +77,19 @@ any call outside it. The allow-list is:
   and to name what is running;
 - `smartglass.wake_up` and `smartglass.turn_off`, only after a confirmed yes;
 - `smartglass.launch_app`, only for an installed title on the owner's list;
+- `smartglass.go_home`, only after a confirmed yes, to stop a listed game
+  that is in front (added 2026-11-11, at the owner's request to stop games by
+  voice). The cloud has no command that closes a game: Home brings the
+  dashboard in front, and the console keeps the game paused in the
+  background (Quick Resume). Every answer says so. `press_button` could walk
+  a menu to "Quit", but on the wrong screen it could confirm a purchase or
+  change a setting, so it stays off the list;
 - `AuthenticationManager.refresh_tokens`, plus `generate_authorization_url`
   and `request_tokens` in the owner's own sign-in command.
 
 Nothing else is called. That rules out every store, purchase, account, family,
 privacy, settings, friends, messages, presence and achievements call, the
-other console commands (`press_button`, `insert_text`, `volume`, `reboot`,
+other console commands (`press_button`, `go_back`, `insert_text`, `volume`, `reboot`,
 ...) and the raw session.
 
 **The sign-in uses the library's own public client id**

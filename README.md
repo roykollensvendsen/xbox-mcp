@@ -32,7 +32,10 @@ $ uv run xbox-mcp serve --simulate < /dev/null
 | `xbox_status` | Whether the Xbox is on, asleep or off, and the game or app it runs | No |
 | `xbox_power_request` | Asks whether to wake the Xbox or put it to sleep, and hands out a token; sends nothing | No |
 | `xbox_power_confirm` | With that token, within 30 seconds and once only: wakes or sleeps the Xbox, reads it back, and after a wake switches its TV to the Xbox | Wakes or sleeps the Xbox |
-| `xbox_launch` | Starts a game from the owner's own list, only if it is installed and the Xbox is on, and reads it back | Starts a game |
+| `xbox_launch` | Starts a game from the owner's own list, only if it is installed and the Xbox is on, and reads it back. When another game is in front, it asks first, naming it, and returns a token | Starts a game |
+| `xbox_launch_confirm` | With that token, within 30 seconds and once only: checks the same game is still in front, then starts the new one and reads it back | Starts a game |
+| `xbox_home_request` | Names the listed game in front and asks whether to send the Xbox to Home; sends nothing, returns a token | Nothing |
+| `xbox_home_confirm` | With that token, within 30 seconds and once only: checks the same game is still in front, sends the Xbox to Home and reads it back. The game stays paused in the background, since Microsoft's cloud cannot close it | Shows Home |
 
 Every answer has `say`, read aloud as it is, and `success` with `outcome`
 for a program: `done`, `asked` (a power question waits for the owner's yes), `unreachable` (Microsoft's cloud did not answer),
