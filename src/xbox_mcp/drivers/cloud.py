@@ -18,9 +18,11 @@ import base64
 import getpass
 import hashlib
 import os
+import pathlib
 import re
 import secrets
 import stat
+import tempfile
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -37,7 +39,6 @@ from xbox_mcp import console
 from xbox_mcp.console import App, Console, ConsoleStatus, Power, Sent, SignedOutError, UnreachableError
 
 if TYPE_CHECKING:
-    import pathlib
     from collections.abc import Awaitable, Callable
 
 #: The only library calls the plugin makes, as provider.method on the library's client.
@@ -149,13 +150,13 @@ class AllowList:
 
     def __init__(self, client: object) -> None:
         """Guard `client`, the library's XboxLiveClient."""
-        self._client = client
+        self._guarded = client
 
     def __getattr__(self, provider: str) -> _Provider:
         """The library's provider, when the allow-list has a call on it."""
         if provider not in self.PROVIDERS:
             raise NotAllowedError(provider)
-        return _Provider(getattr(self._client, provider), provider)
+        return _Provider(getattr(self._guarded, provider), provider)
 
 
 def _refused(error: Exception) -> UnreachableError:
@@ -169,13 +170,24 @@ def _refused(error: Exception) -> UnreachableError:
 
 
 def write_tokens(path: pathlib.Path, text: str) -> None:
-    """Write the tokens to `path`, readable by the owner alone, in a folder only the owner can enter."""
+    """Replace the tokens in `path` whole, readable by the owner alone, in a folder only the owner can enter.
+
+    They go to a new file beside it first, made 600 before anything is written,
+    and take its place in one step; a failure leaves the old file as it was.
+    """
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     path.parent.chmod(0o700)
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(descriptor, "w") as file:
-        file.write(text)
-    path.chmod(0o600)
+    descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=".tokens-", suffix=".json")
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w") as file:
+            file.write(text)
+            file.flush()
+            os.fsync(file.fileno())
+        pathlib.Path(name).replace(path)
+    except BaseException:
+        pathlib.Path(name).unlink(missing_ok=True)
+        raise
 
 
 def read_tokens(path: pathlib.Path) -> OAuth2TokenResponse:

@@ -503,3 +503,31 @@ def test_a_sign_in_the_library_refuses_says_to_sign_in_again():
     with pytest.raises(SignedOutError) as raised:
         asyncio.run(driver.status("F4000000000000A1"))
     assert SIGN_IN_COMMAND in raised.value.say
+
+
+def test_tokens_are_replaced_whole_or_not_at_all(tmp_path, monkeypatch):
+    tokens = tmp_path / "tokens.json"
+    cloud.write_tokens(tokens, '{"old": 1}')
+
+    def fails(*_args):
+        error = "disk full"
+        raise OSError(error)
+
+    monkeypatch.setattr(cloud.pathlib.Path, "replace", fails)
+    with pytest.raises(OSError, match="disk full"):
+        cloud.write_tokens(tokens, '{"new": 1}')
+    assert tokens.read_text() == '{"old": 1}'
+    assert [p.name for p in tmp_path.iterdir()] == ["tokens.json"], "no half-written file is left"
+
+
+def test_nothing_reaches_past_the_allow_list_to_the_library_client():
+    tree = ast.parse(SOURCE.read_text())
+    guard = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "AllowList")
+    inside = {id(n) for n in ast.walk(guard)}
+    reached = [
+        n.lineno
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Attribute) and n.attr == "_guarded" and id(n) not in inside
+    ]
+    assert not reached, f"the guarded client is reached past AllowList at lines {reached}"
+    assert "_guarded" in {n.attr for n in ast.walk(guard) if isinstance(n, ast.Attribute)}
