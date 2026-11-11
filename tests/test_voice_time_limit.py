@@ -22,6 +22,8 @@ CALL = cloud.CALL_WITHIN
 ANSWERED = {
     "status: the status, then the installed apps": 2 * CALL,
     "power question: the status, then the TV at night": CALL + tv.TV_WITHIN,
+    "stop question: the status, then the apps to name the game": 2 * CALL,
+    "launch over a game: the status, the apps, then the question": 2 * CALL,
 }
 #: Paths that may run past the deadline. The voice hears "it carries on", and what they end with
 #: is said at the start of the next answer (test_server's test_what_a_slow_tool_ends_with_...).
@@ -33,6 +35,8 @@ FINISHED = {
     "launch, console unknown: the consoles, the status, the apps, the start, the watch": (
         4 * CALL + service.READ_BACK_WITHIN
     ),
+    "stop confirm: the status again, Home, then the watch": 2 * CALL + service.READ_BACK_WITHIN,
+    "replace confirm: the status again, the start, then the watch": 2 * CALL + service.READ_BACK_WITHIN,
 }
 
 

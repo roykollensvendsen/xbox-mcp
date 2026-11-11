@@ -156,7 +156,7 @@ replace = 'if False:'
 [[rule]]
 name = "a start is said as done only once the xbox shows it"
 file = "src/xbox_mcp/service.py"
-find = 'if not await self\._shows\(console\.id, app\):'
+find = 'if not await self\._shows\(console_id, app\):'
 replace = 'if False:'
 
 [[rule]]
@@ -181,4 +181,28 @@ replace = ''
 name = "a code is never asked for while another program holds the redirect port"
 file = "src/xbox_mcp/drivers/cloud.py"
 find = 'if server is None and not other_device:'
+replace = 'if False:'
+
+[[rule]]
+name = "a token answers only the question it was asked for"
+file = "src/xbox_mcp/power.py"
+find = 'if question\.action not in kinds:'
+replace = 'if False:'
+
+[[rule]]
+name = "a start over a game is checked again at the yes"
+file = "src/xbox_mcp/service.py"
+find = 'if status\.focus != question\.over or status\.power != "on":'
+replace = 'if False:'
+
+[[rule]]
+name = "only a listed title is ever sent home"
+file = "src/xbox_mcp/service.py"
+find = 'if _plain_words\(running\.name\) not in \{_plain_words\(t\) for t in self\.settings\.titles\}:'
+replace = 'if False:'
+
+[[rule]]
+name = "a stop is checked again at the yes"
+file = "src/xbox_mcp/service.py"
+find = 'if status\.power != "on" or status\.focus != question\.over:'
 replace = 'if False:'

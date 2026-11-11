@@ -24,7 +24,7 @@ from xbox_mcp.console import (
     SignedOutError,
     UnreachableError,
 )
-from xbox_mcp.power import CONFIRM_WITHIN, Action, Questions, is_night, local_hour
+from xbox_mcp.power import CONFIRM_WITHIN, Action, Question, Questions, is_night, local_hour
 from xbox_mcp.tv import TvSwitch, screen_on, show_xbox
 
 if TYPE_CHECKING:
@@ -39,6 +39,8 @@ UNREACHABLE = (
 )
 #: What the voice hears when there is no Microsoft sign-in.
 SIGNED_OUT = f"The Xbox plugin is not signed in to Microsoft. In a terminal, run {SIGN_IN_COMMAND}"
+#: What the voice hears when what runs changed between a question and its yes.
+CHANGED = "What the Xbox shows changed since I asked, so I did nothing. Ask again if you still want it."
 #: What the owner checks when Microsoft refuses a command.
 REMOTE_FEATURES = (
     "Check that remote features are on: Settings, Devices & connections (Enheter og tilkoblinger), "
@@ -271,11 +273,12 @@ class XboxService:
         question = self.questions.take(token)
         if question is None:
             return answer("refused", NO_QUESTION)
-        night = await self._night_refusal(question.action)
+        action: Action = "wake" if question.action == "wake" else "sleep"
+        night = await self._night_refusal(action)
         if night:
             self.questions.spend(question)
             return answer("refused", night)
-        command = self.cloud.wake if question.action == "wake" else self.cloud.sleep
+        command = self.cloud.wake if action == "wake" else self.cloud.sleep
         try:
             sent = await command(question.console_id)
         except UnreachableError as error:
@@ -286,7 +289,7 @@ class XboxService:
             reason = sent.reason or "no reason given"
             say = f"Microsoft did not take the command ({reason}), so nothing changed. {REMOTE_FEATURES}"
             return answer("refused", say, power=None)
-        return await self._after(question.action, question.console_id)
+        return await self._after(action, question.console_id)
 
     async def _watch(self, console_id: str, done: Callable[[ConsoleStatus], bool]) -> ConsoleStatus | None:
         """The console's status once `done` holds for it, or the last one read when the watch ends."""
@@ -360,16 +363,118 @@ class XboxService:
             )
             return answer("refused", say, title=None)
         app = installed[0]
-        sent = await self.cloud.launch(console.id, app.product_id)
+        running = await self._running(console.id, status)
+        if running and running.aumid == app.aumid:
+            return answer("done", f"{name} is already running.", title=name)
+        if running:
+            return self._ask_over(console.id, running, app, name)
+        return await self._start(console.id, app, name)
+
+    def _ask_over(self, console_id: str, running: App, app: App, name: str) -> dict[str, Any]:
+        """Ask before starting `app` over the game in front; nothing is sent."""
+        question = self.questions.ask(
+            "launch", console_id, over=running.aumid, name=name, product_id=app.product_id, aumid=app.aumid
+        )
+        say = (
+            f"{running.name} is running. It stays paused in the background if I start {name}. "
+            f"Do you want me to start {name} instead?"
+        )
+        return answer("asked", say, token=question.token, title=name, expires_in=CONFIRM_WITHIN)
+
+    async def launch_confirm(self, token: str) -> dict[str, Any]:
+        """Carry out the owner's yes to starting a game over the one in front."""
+        question = self.questions.take(token, ("launch",))
+        if question is None or question.product_id is None or question.name is None:
+            return answer("refused", NO_QUESTION, title=None)
+        try:
+            return await self._confirmed_start(question)
+        except UnreachableError as error:
+            return cloud_failure(error, title=None)
+
+    async def _confirmed_start(self, question: Question) -> dict[str, Any]:
+        status = await self.cloud.status(question.console_id)
+        self.questions.spend(question)
+        # RULE: a start over a game is checked again at the yes
+        if status.focus != question.over or status.power != "on":
+            return answer("refused", CHANGED, title=None)
+        app = App(str(question.name), str(question.product_id), question.aumid)
+        return await self._start(question.console_id, app, app.name)
+
+    async def _start(self, console_id: str, app: App, name: str) -> dict[str, Any]:
+        """Send the start of `app`, and read it back."""
+        sent = await self.cloud.launch(console_id, app.product_id)
         if not sent.accepted:
             reason = sent.reason or "no reason given"
             say = f"Microsoft did not take the start ({reason}), so nothing changed. {REMOTE_FEATURES}"
             return answer("refused", say, title=None)
         # RULE: a start is said as done only once the xbox shows it
-        if not await self._shows(console.id, app):
+        if not await self._shows(console_id, app):
             say = f"I sent the start of {name}, but the Xbox does not show it yet: not confirmed. Ask soon."
             return answer("not_confirmed", say, title=None)
         return answer("done", f"Started {name}. The Xbox is running it.", title=name)
+
+    async def _running(self, console_id: str, status: ConsoleStatus) -> App | None:
+        """The app in front, when the console is on and shows something other than Home."""
+        if status.power != "on" or status.focus in (None, HOME_AUMID):
+            return None
+        found = [a for a in await self.cloud.apps(console_id) if a.aumid == status.focus]
+        return found[0] if found else App("An app I cannot name", "", status.focus)
+
+    async def home_request(self) -> dict[str, Any]:
+        """Ask the owner whether to send the console to Home, naming the game in front; nothing is sent."""
+        try:
+            console, status = await self.look()
+            running = await self._running(console.id, status)
+        except Refused as refused:
+            return answer(refused.outcome, refused.say, title=None)
+        except UnreachableError as error:
+            return cloud_failure(error, title=None)
+        if running is None:
+            shown = "The Xbox shows Home." if status.power == "on" else describe(status, None)
+            say = f"{shown} No game is in front, so there is nothing to stop. Ask what it runs, if unsure."
+            return answer("refused", say, title=None)
+        # RULE: only a listed title is ever sent home
+        if _plain_words(running.name) not in {_plain_words(t) for t in self.settings.titles}:
+            say = (
+                f"{running.name} is running, but it is not on your list, so I won't stop it. "
+                f"Add it to [launch] titles in {SETTINGS_FILE}, or use the controller."
+            )
+            return answer("refused", say, title=running.name)
+        question = self.questions.ask("home", console.id, over=running.aumid, name=running.name)
+        say = (
+            f"{running.name} is running. If I send the Xbox to Home, {running.name} stays paused in the "
+            "background. Do you want me to?"
+        )
+        return answer("asked", say, token=question.token, title=running.name, expires_in=CONFIRM_WITHIN)
+
+    async def home_confirm(self, token: str) -> dict[str, Any]:
+        """Carry out the owner's yes to sending the console to Home, checked again first."""
+        question = self.questions.take(token, ("home",))
+        if question is None:
+            return answer("refused", NO_QUESTION, title=None)
+        try:
+            return await self._go_home(question)
+        except UnreachableError as error:
+            return cloud_failure(error, title=None)
+
+    async def _go_home(self, question: Question) -> dict[str, Any]:
+        status = await self.cloud.status(question.console_id)
+        # RULE: a stop is checked again at the yes
+        if status.power != "on" or status.focus != question.over:
+            self.questions.spend(question)
+            return answer("refused", CHANGED, title=None)
+        sent = await self.cloud.home(question.console_id)
+        self.questions.spend(question)
+        if not sent.accepted:
+            reason = sent.reason or "no reason given"
+            say = f"Microsoft did not take the command ({reason}), so nothing changed. {REMOTE_FEATURES}"
+            return answer("refused", say, title=None)
+        shown = await self._watch(question.console_id, lambda s: s.focus == HOME_AUMID)
+        if shown is None or shown.focus != HOME_AUMID:
+            say = "I sent the Xbox to Home, but it does not show Home yet: not confirmed. Ask soon."
+            return answer("not_confirmed", say, title=question.name)
+        say = f"The Xbox shows Home now. {question.name} stays paused in the background."
+        return answer("done", say, title=question.name)
 
     async def _shows(self, console_id: str, app: App) -> bool:
         """Whether the console shows `app` in front; never, for an app with no id to read back."""

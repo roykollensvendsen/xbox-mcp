@@ -14,11 +14,11 @@ import re
 import pytest
 
 from xbox_mcp import server, tv
-from xbox_mcp.console import Sent
+from xbox_mcp.console import HOME_AUMID, Sent
 from xbox_mcp.power import Questions
 from xbox_mcp.service import XboxService
 from xbox_mcp.settings import Settings
-from xbox_mcp.simulator import SimulatedCloud
+from xbox_mcp.simulator import FORZA, HALO, SimulatedCloud
 from xbox_mcp.tv import SimulatedTvPlugin, show_xbox
 
 #: A sentence that tells the owner what to do: it opens with one of these.
@@ -54,6 +54,36 @@ def _confirmed(service, action):
     return asyncio.run(run())
 
 
+def _showing(app):
+    cloud = SimulatedCloud(power="on")
+    cloud.focus = app.aumid
+    return cloud
+
+
+def _changed(cloud, kind):
+    service = _service(cloud)
+
+    async def run():
+        asked = await (service.home_request() if kind == "home" else service.launch("Forza"))
+        cloud.focus = HOME_AUMID
+        confirm = service.home_confirm if kind == "home" else service.launch_confirm
+        return await confirm(asked["token"])
+
+    return asyncio.run(run())
+
+
+def _stop_unconfirmed():
+    cloud = _showing(FORZA)
+    service = _service(cloud)
+
+    async def run():
+        asked = await service.home_request()
+        cloud.ignores_commands = True
+        return await service.home_confirm(asked["token"])
+
+    return asyncio.run(run())
+
+
 FAILURES = {
     "cloud down": lambda: asyncio.run(_service(SimulatedCloud(reachable=False)).status()),
     "signed out": lambda: asyncio.run(_service(SimulatedCloud(signed_in=False)).status()),
@@ -83,6 +113,14 @@ FAILURES = {
         _service(_refusing(SimulatedCloud(power="on"))).launch("Forza")
     ),
     "tv never on": lambda: asyncio.run(show_xbox(SimulatedTvPlugin(screen="off"), settle=0.0)),
+    "stop with home in front": lambda: asyncio.run(_service(SimulatedCloud(power="on")).home_request()),
+    "stop while asleep": lambda: asyncio.run(_service(SimulatedCloud()).home_request()),
+    "stop an unlisted game": lambda: asyncio.run(_service(_showing(HALO)).home_request()),
+    "stop token run out": lambda: asyncio.run(_service(SimulatedCloud()).home_confirm("nope")),
+    "stop changed at the yes": lambda: _changed(_showing(FORZA), "home"),
+    "stop not confirmed": _stop_unconfirmed,
+    "replace token run out": lambda: asyncio.run(_service(SimulatedCloud()).launch_confirm("nope")),
+    "replace changed at the yes": lambda: _changed(_showing(HALO), "launch"),
 }
 
 

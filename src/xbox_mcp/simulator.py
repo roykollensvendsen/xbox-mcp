@@ -83,7 +83,9 @@ class SimulatedCloud:
         self._answers()
         return list(self.installed)
 
-    def _send(self, what: Literal["wake", "sleep", "launch"], console_id: str, product: str | None) -> bool:
+    def _send(
+        self, what: Literal["wake", "sleep", "launch", "home"], console_id: str, product: str | None
+    ) -> bool:
         self._answers()
         self.sent.append((what, console_id, product))
         return not self.ignores_commands
@@ -100,6 +102,12 @@ class SimulatedCloud:
         """Put a console that is on to sleep."""
         if self._send("sleep", console_id, None) and self.power[console_id] == "on":
             self.power[console_id], self.focus = "asleep", None
+        return Sent(accepted=True)
+
+    async def home(self, console_id: str) -> Sent:
+        """Show Home on a console that is on; the app that was in front stays paused."""
+        if self._send("home", console_id, None) and self.power[console_id] == "on":
+            self.focus = HOME_AUMID
         return Sent(accepted=True)
 
     async def launch(self, console_id: str, product_id: str) -> Sent:

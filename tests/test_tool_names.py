@@ -16,6 +16,9 @@ from xbox_mcp.simulator import SimulatedCloud
 #: Pairs that look or sound alike: the power question and its confirm differ by one word.
 CONFUSABLE = {
     frozenset({"xbox_power_request", "xbox_power_confirm"}),
+    frozenset({"xbox_power_request", "xbox_home_request"}),
+    frozenset({"xbox_power_confirm", "xbox_home_confirm"}),
+    frozenset({"xbox_launch_confirm", "xbox_home_confirm"}),
 }
 #: How alike two names may be, as difflib reckons it, before the pair must be listed.
 ALIKE = 0.75

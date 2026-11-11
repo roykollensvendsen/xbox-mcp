@@ -25,6 +25,9 @@ INSTRUCTIONS = (
     "Read each 'say' aloud as it is. "
     "Waking or sleeping it needs the owner's spoken yes: read the question aloud, and confirm only if "
     "the owner clearly says yes. At night it is not woken unless its TV is already on. "
+    "Stopping a game, and starting one over a running game, also asks first: read the question, which "
+    "names the game, and confirm with its token only on a clear yes. Stopping sends the Xbox to Home; "
+    "the game stays paused in the background. "
     "No tool touches the store, purchases, the account, family, privacy, settings, friends or messages, "
     "and none switches a TV on or off."
 )
@@ -146,5 +149,38 @@ def build_server(service: XboxService, *, simulated: bool = False) -> MCPServer[
     )
     async def xbox_launch(title: str) -> dict[str, Any]:
         return await service.launch(title)
+
+    @guarded.tool(
+        annotations=CHANGES,
+        description=(
+            "Replace the running game.\nToken: from the latest xbox_launch that asked, used once,"
+            " within 30 seconds, only on the owner's clear yes. Checked again: if what runs changed,"
+            " nothing starts."
+        ),
+    )
+    async def xbox_launch_confirm(token: str) -> dict[str, Any]:
+        return await service.launch_confirm(token)
+
+    @guarded.tool(
+        annotations=CHANGES,
+        description=(
+            "Stop a game, asking first.\nNames the listed game in front and asks whether to send the Xbox"
+            " to Home, where the game stays paused in the background. Sends nothing: read the question"
+            " aloud, and pass its token to xbox_home_confirm only on the owner's clear yes."
+        ),
+    )
+    async def xbox_home_request() -> dict[str, Any]:
+        return await service.home_request()
+
+    @guarded.tool(
+        annotations=CHANGES,
+        description=(
+            "Send the Xbox to Home.\nToken: from the latest xbox_home_request, used once, within 30"
+            " seconds. Checked again: if another game is in front now, nothing is sent. Says 'not"
+            " confirmed' until Home shows."
+        ),
+    )
+    async def xbox_home_confirm(token: str) -> dict[str, Any]:
+        return await service.home_confirm(token)
 
     return server
