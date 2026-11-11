@@ -14,6 +14,7 @@ readable by the owner alone. They are never logged or shown.
 from __future__ import annotations
 
 import asyncio
+import getpass
 import os
 import stat
 import webbrowser
@@ -252,9 +253,18 @@ class _Callback(BaseHTTPRequestHandler):
         """Say nothing: the request carries the sign-in code."""
 
 
-def _wait_for_code() -> str | None:
-    server = HTTPServer(("127.0.0.1", REDIRECT_PORT), _Callback)
+def _listen() -> HTTPServer | None:
+    """The one-shot listener for Microsoft's redirect; None when another program holds the port."""
+    try:
+        server = HTTPServer(("127.0.0.1", REDIRECT_PORT), _Callback)
+    except OSError:
+        return None
     server.timeout = SIGN_IN_WITHIN
+    return server
+
+
+def _wait_for_code(server: HTTPServer) -> str | None:
+    _Callback.code = None
     try:
         server.handle_request()
     finally:
@@ -262,17 +272,43 @@ def _wait_for_code() -> str | None:
     return _Callback.code
 
 
-async def sign_in(tokens: pathlib.Path, say: Callable[[str], None]) -> bool:
-    """The owner signs in to Microsoft in a browser; the tokens go to `tokens`, never to the screen."""
+def code_from(address: str) -> str | None:
+    """The sign-in code in the address the browser ended on, as the owner pasted it."""
+    codes = parse_qs(urlparse(address.strip()).query).get("code") or []
+    return codes[0] if codes else None
+
+
+PASTE = (
+    "Another program on this computer uses port {port}, so the sign-in cannot come back here by itself.\n"
+    "After you sign in, the browser ends on a page that fails or shows something else. That is expected.\n"
+    "Copy the whole address from the browser's address bar, starting with http://localhost:{port}/, "
+    "and paste it here. It will not be shown."
+)
+
+
+async def sign_in(
+    tokens: pathlib.Path, say: Callable[[str], None], ask: Callable[[str], str] = getpass.getpass
+) -> bool:
+    """The owner signs in to Microsoft in a browser; the tokens go to `tokens`, never to the screen.
+
+    The redirect comes back to a listener on this computer, or, when another
+    program holds the port, through the address the owner pastes, unshown.
+    """
     async with SignedSession() as session:
         auth = AuthenticationManager(session, CLIENT_ID, "", REDIRECT_URI)
         url = auth.generate_authorization_url()
         say(f"Open this page and sign in with the Microsoft account the Xbox uses:\n\n  {url}\n")
+        server = _listen()
+        if server is None:
+            say(PASTE.format(port=REDIRECT_PORT))
         webbrowser.open(url)
-        say(f"Waiting up to {int(SIGN_IN_WITHIN // 60)} minutes for the sign-in to finish in the browser...")
-        code = await asyncio.to_thread(_wait_for_code)
+        if server is None:
+            code = code_from(await asyncio.to_thread(ask, "Address: "))
+        else:
+            say(f"Waiting up to {int(SIGN_IN_WITHIN // 60)} minutes for you to sign in, in the browser...")
+            code = await asyncio.to_thread(_wait_for_code, server)
         if not code:
-            say("The sign-in did not come back. Run xbox-mcp sign-in again.")
+            say("No sign-in code came back. Run xbox-mcp sign-in again, and sign in within five minutes.")
             return False
         await auth.request_tokens(code)
         if auth.oauth is None:

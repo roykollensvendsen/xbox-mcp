@@ -299,3 +299,25 @@ def test_a_redirect_without_a_code_is_a_failed_sign_in():
     reply, code = _redirect("?error=access_denied")
     assert code is None
     assert reply.status_code == 400
+
+
+def test_the_code_is_read_from_the_address_the_owner_pastes():
+    assert cloud.code_from("  http://localhost:8080/auth/callback?code=M.C5_abc&state=x\n") == "M.C5_abc"
+    assert cloud.code_from("http://localhost:8080/auth/callback?error=access_denied") is None
+    assert cloud.code_from("") is None
+
+
+def test_a_port_another_program_holds_falls_back_to_pasting(monkeypatch):
+    holder = HTTPServer(("127.0.0.1", 0), cloud._Callback)  # noqa: SLF001
+    monkeypatch.setattr(cloud, "REDIRECT_PORT", holder.server_port)
+    try:
+        assert cloud._listen() is None  # noqa: SLF001
+    finally:
+        holder.server_close()
+
+
+def test_the_paste_instructions_say_what_the_owner_will_see_and_do():
+    text = cloud.PASTE.format(port=8080)
+    assert "http://localhost:8080/" in text
+    assert "expected" in text
+    assert "not be shown" in text
