@@ -73,6 +73,10 @@ def _night(night: dict[str, Any]) -> tuple[int, int]:
     if not all(isinstance(h, int) and 0 <= h < HOURS_IN_A_DAY for h in (starts, ends)):
         msg = "[night] starts and ends are hours of the day, 0 to 23."
         raise SettingsError(msg)
+    # RULE: a night that starts when it ends is refused
+    if starts == ends:
+        msg = "[night] starts and ends must differ; the same hour would leave no night at all."
+        raise SettingsError(msg)
     return int(starts), int(ends)
 
 

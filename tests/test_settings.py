@@ -43,3 +43,10 @@ def test_titles_must_be_a_list_of_names(tmp_path):
 
 def test_the_tokens_live_beside_the_settings(tmp_path):
     assert tokens_path(tmp_path / "config.toml") == tmp_path / "tokens.json"
+
+
+def test_a_night_that_starts_when_it_ends_is_refused(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text("[night]\nstarts = 22\nends = 22\n")
+    with pytest.raises(SettingsError, match="differ"):
+        load_settings(path)
