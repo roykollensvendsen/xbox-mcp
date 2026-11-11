@@ -41,6 +41,13 @@ SIGNED_OUT = (
     "The Xbox plugin is not signed in to Microsoft. "
     "The owner has to run xbox-mcp sign-in on the computer, in a browser."
 )
+#: What the owner checks when Microsoft refuses a command.
+REMOTE_FEATURES = (
+    "Check that remote features are on: Settings, Devices & connections (Enheter og tilkoblinger), "
+    "Remote features (Eksterne funksjoner)."
+)
+#: Where the owner's settings are, for an answer that sends them there.
+SETTINGS_FILE = "~/.config/xbox-mcp/config.toml"
 #: Seconds the console's status is watched after a command, for the change to show.
 READ_BACK_WITHIN = 6.0
 #: Seconds between looks while watching.
@@ -90,10 +97,24 @@ def _already(action: Action, status: ConsoleStatus) -> tuple[str, str] | None:
     if power == "off":
         return "refused", describe(status, None)
     if action == "wake" and power == "on":
-        return "refused", "The Xbox is already on."
+        return "refused", "The Xbox is already on. Ask what it runs, or ask to put it to sleep."
     if action == "sleep" and power == "asleep":
-        return "refused", "The Xbox is already asleep."
+        return "refused", "The Xbox is already asleep. Ask to wake it if you want it on."
     return None
+
+
+def _plain_words(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
+def listed(said: str, titles: tuple[str, ...]) -> list[str]:
+    """The titles on the owner's list that `said` names: the whole name, or else every word of it."""
+    wanted = _plain_words(said)
+    exact = [t for t in titles if _plain_words(t) == wanted]
+    if exact:
+        return exact
+    words = wanted.split()
+    return [t for t in titles if words and all(w in _plain_words(t) for w in words)]
 
 
 def _question(action: Action, status: ConsoleStatus, *, night: bool) -> str:
@@ -123,8 +144,8 @@ def describe(status: ConsoleStatus, running: str | None) -> str:
     if status.power == "asleep":
         return "The Xbox is asleep."
     return (
-        "The Xbox is fully off, so it can only be switched on at the console. "
-        "Set its power option to Sleep so it can be woken."
+        "The Xbox is fully off, in energy-saving mode, so it can only be switched on at the console. "
+        "Set Settings, General, Power options (Strømalternativer) to Sleep (Hvilemodus), so it can be woken."
     )
 
 
@@ -205,7 +226,7 @@ class XboxService:
         """Ask the owner whether to wake the console or put it to sleep; nothing is sent."""
         wanted = ACTIONS.get(action.casefold().strip())
         if wanted is None:
-            return answer("refused", "I can only wake the Xbox or put it to sleep.")
+            return answer("refused", "I can only wake the Xbox or put it to sleep. Say wake or sleep.")
         try:
             console, status = await self.look()
         except Refused as refused:
@@ -247,22 +268,27 @@ class XboxService:
         self.questions.spend(question)
         if not sent.accepted:
             reason = sent.reason or "no reason given"
-            say = f"Microsoft did not take the command ({reason}), so nothing changed."
+            say = f"Microsoft did not take the command ({reason}), so nothing changed. {REMOTE_FEATURES}"
             return answer("refused", say, power=None)
         return await self._after(question.action, question.console_id)
 
-    async def _read_back(self, console_id: str, wanted: Power) -> Power | None:
-        """The console's power once it reads `wanted`, or what it reads when the watch ends."""
-        waited, power = 0.0, None
+    async def _watch(self, console_id: str, done: Callable[[ConsoleStatus], bool]) -> ConsoleStatus | None:
+        """The console's status once `done` holds for it, or the last one read when the watch ends."""
+        waited, status = 0.0, None
         while True:
             try:
-                power = _plain((await self.cloud.status(console_id)).power)
+                status = await self.cloud.status(console_id)
             except UnreachableError:
-                power = None
-            if power == wanted or waited >= READ_BACK_WITHIN:
-                return power
+                status = None
+            if (status and done(status)) or waited >= READ_BACK_WITHIN:
+                return status
             await self.wait(READ_BACK_EVERY)
             waited += READ_BACK_EVERY
+
+    async def _read_back(self, console_id: str, wanted: Power) -> Power | None:
+        """The console's power once it reads `wanted`, or what it reads when the watch ends."""
+        status = await self._watch(console_id, lambda s: _plain(s.power) == wanted)
+        return _plain(status.power) if status else None
 
     async def _after(self, action: Action, console_id: str) -> dict[str, Any]:
         """What happened after a command was taken, read back from the console's status."""
@@ -281,3 +307,62 @@ class XboxService:
             return done
         tv = await show_xbox(self.tv)
         return done | {"say": f"{done['say']} {tv['say']}", "tv": tv}
+
+    async def launch(self, title: str) -> dict[str, Any]:
+        """Start a title from the owner's list, if it is installed and the Xbox is on; then read it back."""
+        if not self.settings.titles:
+            say = f"No games are on the list yet. Add them to [launch] titles in {SETTINGS_FILE}."
+            return answer("refused", say, title=None)
+        names = listed(title, self.settings.titles)
+        # RULE: only a title on the owners list is ever started
+        if len(names) != 1:
+            return answer("refused", _not_one(title, names, self.settings.titles), title=None)
+        try:
+            return await self._launch(names[0])
+        except Refused as refused:
+            return answer(refused.outcome, refused.say, title=None)
+        except UnreachableError as error:
+            return cloud_failure(error, title=None)
+
+    async def _launch(self, name: str) -> dict[str, Any]:
+        console, status = await self.look()
+        # RULE: a launch is refused unless the xbox is on
+        if status.power != "on":
+            say = f"{describe(status, None)} Wake it first, then ask for {name}."
+            return answer("refused", say, title=None)
+        installed = [
+            a for a in await self.cloud.apps(console.id) if _plain_words(a.name) == _plain_words(name)
+        ]
+        # RULE: only an installed title is ever started
+        if not installed:
+            say = (
+                f"{name} is on the list, but not installed on the Xbox. Install it, or take it off the list."
+            )
+            return answer("refused", say, title=None)
+        app = installed[0]
+        sent = await self.cloud.launch(console.id, app.product_id)
+        if not sent.accepted:
+            reason = sent.reason or "no reason given"
+            say = f"Microsoft did not take the start ({reason}), so nothing changed. {REMOTE_FEATURES}"
+            return answer("refused", say, title=None)
+        shows = await self._read_focus(console.id, app)
+        # RULE: a start is said as done only once the xbox shows it
+        if shows != app.aumid:
+            say = f"I sent the start of {name}, but the Xbox does not show it yet: not confirmed. Ask soon."
+            return answer("not_confirmed", say, title=None)
+        return answer("done", f"Started {name}. The Xbox is running it.", title=name)
+
+    async def _read_focus(self, console_id: str, app: App) -> str | None:
+        """The app in focus once it is `app`, or whatever is in focus when the watch ends."""
+        status = await self._watch(console_id, lambda s: s.focus == app.aumid)
+        return status.focus if status else None
+
+
+def _not_one(said: str, names: list[str], titles: tuple[str, ...]) -> str:
+    """Why `said` names no title, or more than one, on the owner's list."""
+    if names:
+        return f"That could be {' or '.join(names)}. Say which one."
+    return (
+        f"{said} is not on the list of games I may start. The list has {', '.join(titles)}. "
+        f"Say one of those, or add it to [launch] titles in {SETTINGS_FILE}."
+    )
