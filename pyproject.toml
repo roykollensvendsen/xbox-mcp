@@ -12,6 +12,7 @@ license-files = ["LICENSE"]
 dynamic = ["version"]
 dependencies = [
     "mcp>=2.3",
+    "python-xbox==0.4.0",
 ]
 
 [project.scripts]
