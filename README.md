@@ -48,6 +48,42 @@ a wake is refused unless the TV the Xbox is plugged into is already on,
 because waking the Xbox switches that TV on through HDMI-CEC. By day, the
 question says the TV will come on too.
 
+## Sign in to Microsoft
+
+The plugin reaches the Xbox through Microsoft's cloud, so it needs the owner's
+Microsoft sign-in once. In a terminal on the computer the plugin runs on:
+
+<!-- not run: it opens a browser and waits for the owner to sign in -->
+```bash
+cd ~/xbox-mcp && uv run xbox-mcp sign-in
+```
+
+It prints a link to Microsoft's sign-in page and opens it in the browser. Sign
+in with the Microsoft account the Xbox uses, and allow the access it asks for.
+The page then sends the browser back to this computer, and the terminal says
+"Signed in" and names the consoles on the account. The sign-in is kept in
+`~/.config/xbox-mcp/tokens.json`, readable by you alone, and is never shown,
+logged or sent to the voice. No Azure app registration is needed
+([ADR-XB-001](decisions/ADR-XB-001-reach-the-xbox-through-microsofts-cloud.md)).
+
+```console
+$ uv run xbox-mcp sign-in --help
+usage: xbox-mcp [-h] [--simulate] [--settings-file SETTINGS_FILE]
+                {serve,status,sign-in}
+
+Command line for xbox-mcp: serve the tools to a voice session, or ask the
+Xbox.
+
+positional arguments:
+  {serve,status,sign-in}
+
+options:
+  -h, --help            show this help message and exit
+  --simulate            a pretend Xbox, no network
+  --settings-file SETTINGS_FILE
+                        instead of ~/.config/xbox-mcp/config.toml
+```
+
 ## Settings
 
 In `~/.config/xbox-mcp/config.toml`, never in this repository:
