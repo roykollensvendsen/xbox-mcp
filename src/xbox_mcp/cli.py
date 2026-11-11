@@ -9,10 +9,12 @@ import pathlib
 import sys
 
 from xbox_mcp.console import Cloud, NoCloud
+from xbox_mcp.drivers.tv_plugin import TvPlugin
 from xbox_mcp.server import build_server
 from xbox_mcp.service import XboxService
 from xbox_mcp.settings import Settings, SettingsError, load_settings, settings_path
 from xbox_mcp.simulator import SimulatedCloud
+from xbox_mcp.tv import TvSwitch
 
 #: Every verb this command has. The documentation test requires each one to
 #: appear in a worked example, so a verb cannot be added without one.
@@ -26,6 +28,17 @@ def _service(*, simulate: bool, settings_file: str | None) -> XboxService:
     settings = load_settings(path)
     cloud: Cloud = NoCloud()
     return XboxService(cloud, settings)
+
+
+def tv_from(table: dict[str, object]) -> TvSwitch | None:
+    """The TV step from the settings' [tv] table; None when there is none."""
+    if not table:
+        return None
+    command, tv = table.get("command"), table.get("name")
+    if not (isinstance(command, list) and command and isinstance(tv, str)):
+        msg = "[tv] needs command = [...] and name = the TV as the TV plugin knows it."
+        raise SettingsError(msg)
+    return TvPlugin(command=[str(c) for c in command], tv=tv, device=str(table.get("device", "Xbox")))
 
 
 def main(argv: list[str] | None = None) -> int:
