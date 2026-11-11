@@ -33,16 +33,8 @@ from pythonxbox.authentication.models import OAuth2TokenResponse
 from pythonxbox.common.exceptions import AuthenticationException
 from pythonxbox.common.signed_session import SignedSession
 
-from xbox_mcp.console import (
-    SIGN_IN_COMMAND,
-    App,
-    Console,
-    ConsoleStatus,
-    Power,
-    Sent,
-    SignedOutError,
-    UnreachableError,
-)
+from xbox_mcp import console
+from xbox_mcp.console import App, Console, ConsoleStatus, Power, Sent, SignedOutError, UnreachableError
 
 if TYPE_CHECKING:
     import pathlib
@@ -77,8 +69,10 @@ POWER: dict[str, Power] = {
     "Unknown": "unknown",
 }
 HTTP_UNAUTHORIZED, HTTP_FORBIDDEN = 401, 403
-SIGN_IN = f"Sign in again: in a terminal on the computer, run {SIGN_IN_COMMAND}"
-NOT_SIGNED_IN = f"The Xbox plugin is not signed in to Microsoft yet. In a terminal, run {SIGN_IN_COMMAND}"
+SIGN_IN = f"Sign in again: in a terminal on the computer, run {console.SIGN_IN_COMMAND}"
+NOT_SIGNED_IN = (
+    f"The Xbox plugin is not signed in to Microsoft yet. In a terminal, run {console.SIGN_IN_COMMAND}"
+)
 EXPIRED = f"The Xbox plugin's Microsoft sign-in has expired. {SIGN_IN}"
 #: Microsoft's answers to a refresh token it no longer takes.
 REFUSED_REFRESH = frozenset({400, 401, 403})
@@ -380,6 +374,19 @@ async def _listened_code(url: str, server: HTTPServer, say: Callable[[str], None
     return await asyncio.to_thread(_wait_for_code, server)
 
 
+async def _code_for(
+    url: str, say: Callable[[str], None], ask: Callable[[str], str], *, other_device: bool
+) -> tuple[str | None, str]:
+    """The sign-in code for `url`, or None and what to tell the owner instead."""
+    server = None if other_device else _listen()
+    # RULE: a code is never asked for while another program holds the redirect port
+    if server is None and not other_device:
+        return None, BUSY.format(port=REDIRECT_PORT, command=console.SIGN_IN_COMMAND)
+    say(f"Open this page and sign in with the Microsoft account the Xbox uses:\n\n  {url}\n")
+    code = await (_listened_code(url, server, say) if server else _pasted_code(ask, say))
+    return code, f"No sign-in code came back within five minutes. Run {console.SIGN_IN_COMMAND} again."
+
+
 async def _redeemed(auth: PkceAuth, code: str) -> OAuth2TokenResponse | None:
     """The tokens Microsoft gave for `code`; None for a spent or refused code."""
     try:
@@ -407,19 +414,13 @@ async def sign_in(
         verifier, challenge = pkce_pair()
         auth = PkceAuth(session, CLIENT_ID, "", REDIRECT_URI, verifier=verifier)
         url = with_challenge(auth.generate_authorization_url(), challenge)
-        server = None if other_device else _listen()
-        # RULE: a code is never asked for while another program holds the redirect port
-        if server is None and not other_device:
-            say(BUSY.format(port=REDIRECT_PORT, command=SIGN_IN_COMMAND))
-            return False
-        say(f"Open this page and sign in with the Microsoft account the Xbox uses:\n\n  {url}\n")
-        code = await (_listened_code(url, server, say) if server else _pasted_code(ask, say))
+        code, why = await _code_for(url, say, ask, other_device=other_device)
         if not code:
-            say(f"No sign-in code came back within five minutes. Run {SIGN_IN_COMMAND} again.")
+            say(why)
             return False
         oauth = await _redeemed(auth, code)
         if oauth is None:
-            say(f"Microsoft did not accept the sign-in. Run {SIGN_IN_COMMAND} again.")
+            say(f"Microsoft did not accept the sign-in. Run {console.SIGN_IN_COMMAND} again.")
             return False
         write_tokens(tokens, oauth.model_dump_json())
         consoles = await AllowList(XboxLiveClient(auth)).smartglass.get_console_list(
