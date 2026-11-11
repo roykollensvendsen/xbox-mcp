@@ -57,10 +57,7 @@ class Questions:
     def take(self, token: str, kinds: tuple[Kind, ...] = ("wake", "sleep")) -> Question | None:
         """The open question of one of `kinds` this token answers, while it is fresh; None otherwise."""
         question = self._open
-        if question is None or not secrets.compare_digest(question.token, token):
-            return None
-        # RULE: a token answers only the question it was asked for
-        if question.action not in kinds:
+        if question is None or not _answers(question, token, kinds):
             return None
         # RULE: a token older than thirty seconds is refused
         if self._clock() - question.asked_at > CONFIRM_WITHIN:
@@ -73,6 +70,14 @@ class Questions:
         # RULE: a token is single-use
         if self._open == question:
             self._open = None
+
+
+def _answers(question: Question, token: str, kinds: tuple[Kind, ...]) -> bool:
+    """Whether `token` is this question's, and the question is of one of `kinds`."""
+    # RULE: a token answers only the question it was asked for
+    if question.action not in kinds:
+        return False
+    return secrets.compare_digest(question.token, token)
 
 
 def is_night(hour: int, night: tuple[int, int]) -> bool:
