@@ -390,13 +390,13 @@ def _sign_in(tmp_path, monkeypatch, pasted):
 
 
 def test_a_sign_in_keeps_the_tokens_for_the_owner_alone_and_never_prints_them(tmp_path, monkeypatch):
-    ok, said, tokens = _sign_in(tmp_path, monkeypatch, "http://localhost:8080/auth/callback?code=c1")
+    ok, said, tokens = _sign_in(tmp_path, monkeypatch, "http://localhost:8080/auth/callback?code=SIGN-IN-CODE-NEVER-SHOWN")
     assert ok is True
     assert "Signed in" in said
     assert "Xbox" in said
     assert str(tokens) in said
     assert tokens.stat().st_mode & 0o777 == 0o600
-    for secret in ("old-access", "old-refresh", "c1"):
+    for secret in ("old-access", "old-refresh", "SIGN-IN-CODE-NEVER-SHOWN"):
         assert secret not in said
 
 
