@@ -348,9 +348,10 @@ def code_from(address: str) -> str | None:
 
 
 PASTE = (
-    "After you sign in, the browser ends on a page that fails or shows something else. That is expected.\n"
-    "Copy the whole address from the browser's address bar (it starts with http://localhost:{port}/), "
-    "or just the part after code=, and paste it here. It will not be shown."
+    "After you sign in, the browser lands on an error page (it cannot connect, or says 404). "
+    "That is expected.\n"
+    "Copy the WHOLE address from the browser's address bar (it starts with http://localhost:{port}/) "
+    "and paste it here. It will not be shown."
 )
 BUSY = (
     "Another program on this computer uses port {port}, where Microsoft sends the sign-in back, "
@@ -364,7 +365,7 @@ async def _pasted_code(ask: Callable[[str], str], say: Callable[[str], None]) ->
     """The sign-in code the owner pastes from another device's browser."""
     say(OTHER_DEVICE)
     say(PASTE.format(port=REDIRECT_PORT))
-    return code_from(await asyncio.to_thread(ask, "Address or code: "))
+    return code_from(await asyncio.to_thread(ask, "Paste the whole address: "))
 
 
 async def _listened_code(url: str, server: HTTPServer, say: Callable[[str], None]) -> str | None:
