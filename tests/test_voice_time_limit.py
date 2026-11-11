@@ -3,9 +3,9 @@
 
 The Claude app gives up on a tool after about 15 seconds, and claude-voice cuts
 a plugin off after 30. So each tool's longest path, added up from the waits it
-makes, has to fit: the answer within the server's deadline, and the work that
-carries on past it within half a minute. A new wait, or a longer one, goes
-into the sum here.
+makes, has to fit: the answer within the server's deadline, or else the work
+that carries on past it within half a minute, its result said on the next
+answer. A new wait, or a longer one, goes into the sum here.
 """
 
 from xbox_mcp import server, service, tv
@@ -17,16 +17,22 @@ VOICE_LIMIT = 15.0
 BRIDGE_LIMIT = 30.0
 CALL = cloud.CALL_WITHIN
 
-#: Each tool's longest path, once the console is known (it is looked up once and kept).
+#: Each tool's longest path that the voice hears within the deadline, once the console is known.
+#: The server looks the console up at start (cli._serve), and only once (XboxService.console).
 ANSWERED = {
     "status: the status, then the installed apps": 2 * CALL,
     "power question: the status, then the TV at night": CALL + tv.TV_WITHIN,
 }
+#: Paths that may run past the deadline. The voice hears "it carries on", and what they end with
+#: is said at the start of the next answer (test_server's test_what_a_slow_tool_ends_with_...).
 FINISHED = {
+    "status asked before the start-up lookup is done: the consoles, the status, the apps": 3 * CALL,
     "power confirm: the TV at night, the command, the watch, then the TV": (
         tv.TV_WITHIN + CALL + service.READ_BACK_WITHIN + tv.TV_WITHIN
     ),
-    "launch: the status, the apps, the start, then the watch": 3 * CALL + service.READ_BACK_WITHIN,
+    "launch, console unknown: the consoles, the status, the apps, the start, the watch": (
+        4 * CALL + service.READ_BACK_WITHIN
+    ),
 }
 
 
