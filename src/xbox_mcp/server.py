@@ -68,9 +68,7 @@ class _Guarded:
                 except Exception:  # noqa: BLE001 - whatever broke, the voice gets a sentence
                     # RULE: every tool answers with a sentence, even when it fails
                     answer = {"success": False, "outcome": "refused", "say": BROKE}
-                if self.late:
-                    answer["say"] = " ".join(f"Earlier: {said}" for said in self.late) + " " + answer["say"]
-                    self.late.clear()
+                answer["say"] = self._earlier() + answer["say"]
                 answer["simulated"] = self._simulated
                 # RULE: every simulated answer says simulated first
                 if self._simulated:
@@ -80,6 +78,12 @@ class _Guarded:
             return register(answered)
 
         return guard
+
+    def _earlier(self) -> str:
+        """What work that ran past its deadline ended with, once, to go before the next answer."""
+        said = "".join(f"Earlier: {late} " for late in self.late)
+        self.late.clear()
+        return said
 
     def _ended(self, work: asyncio.Future[Any]) -> None:
         """Keep what work that ran past its deadline ended with, so the next answer says it."""
