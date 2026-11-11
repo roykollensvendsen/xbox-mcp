@@ -360,6 +360,15 @@ async def _await_code(
     return await asyncio.to_thread(_wait_for_code, server)
 
 
+async def _redeemed(auth: PkceAuth, code: str) -> OAuth2TokenResponse | None:
+    """The tokens Microsoft gave for `code`; None for a spent or refused code."""
+    try:
+        await auth.request_tokens(code)
+    except httpx.HTTPError:
+        return None
+    return auth.oauth
+
+
 async def sign_in(
     tokens: pathlib.Path,
     say: Callable[[str], None],
@@ -381,14 +390,11 @@ async def sign_in(
         if not code:
             say("No sign-in code came back. Run xbox-mcp sign-in again, and sign in within five minutes.")
             return False
-        try:
-            await auth.request_tokens(code)
-        except httpx.HTTPError:
-            auth.oauth = None
-        if auth.oauth is None:
-            say("Microsoft gave no sign-in. Run xbox-mcp sign-in again.")
+        oauth = await _redeemed(auth, code)
+        if oauth is None:
+            say("Microsoft did not accept the sign-in. Run xbox-mcp sign-in again.")
             return False
-        write_tokens(tokens, auth.oauth.model_dump_json())
+        write_tokens(tokens, oauth.model_dump_json())
         consoles = await AllowList(XboxLiveClient(auth)).smartglass.get_console_list(
             include_storage_devices=False
         )
