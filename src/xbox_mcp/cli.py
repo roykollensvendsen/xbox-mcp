@@ -10,7 +10,7 @@ import sys
 
 from xbox_mcp.drivers.cloud import CloudConsole, sign_in
 from xbox_mcp.drivers.tv_plugin import TvPlugin
-from xbox_mcp.server import build_server
+from xbox_mcp.server import build_server, log_to
 from xbox_mcp.service import XboxService
 from xbox_mcp.settings import Settings, SettingsError, load_settings, settings_path, tokens_path
 from xbox_mcp.simulator import SimulatedCloud
@@ -73,6 +73,7 @@ async def _serve(
     service: XboxService, *, simulated: bool
 ) -> None:  # pragma: no cover - runs until stdin closes
     """Serve the tools, looking the console up in the background meanwhile."""
+    log_to()
     warming = asyncio.create_task(service.warm())
     try:
         await build_server(service, simulated=simulated).run_stdio_async()
