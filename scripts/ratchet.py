@@ -400,6 +400,11 @@ def budget(path: Path) -> dict[str, Any]:
         return dict(DEFAULT_BUDGET)
 
 
+def reported(now: dict[str, Any], held_to: dict[str, Any]) -> dict[str, Any]:
+    """The levels as printed: without each module's complexity, with the time budget they were held to."""
+    return {**{k: v for k, v in now.items() if k != "complexity"}, "test_budget": held_to}
+
+
 def write_levels(path: Path, now: dict[str, Any]) -> None:
     """Write the measured levels, for main to keep with its run."""
     levels = {k: v for k, v in now.items() if k != "test_budget"}
@@ -473,7 +478,7 @@ def main() -> int:
         sys.stderr.write(problem + "\n")
     if not found:
         sys.stdout.write("The ratchet holds: nothing got worse than the base.\n")
-    sys.stdout.write(json.dumps({k: v for k, v in now.items() if k != "complexity"}, sort_keys=True) + "\n")
+    sys.stdout.write(json.dumps(reported(now, budget(FILE)), sort_keys=True) + "\n")
     return 1 if found else 0
 
 
