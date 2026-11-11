@@ -101,6 +101,30 @@ go in `~/.config/xbox-mcp/tokens.json`, readable by the owner alone (mode
 600). The plugin refuses the file when others can read it. The tokens never pass through
 the bridge, a message, a log or this repository.
 
+### Signing in when another program holds port 8080
+
+Microsoft sends the sign-in back to `http://localhost:8080/auth/callback`,
+the only address the public client id is known to have. The code in that
+address can be redeemed without any secret by whoever holds it first. On the
+owner's computer, a program owned by root already listens on port 8080, so it
+would see the code.
+
+Each sign-in carries a PKCE challenge, and the code is redeemed only with its
+verifier, which never leaves the computer. Whether Microsoft's older sign-in
+endpoint enforces the challenge for this client id has not been shown, and
+cannot be shown without a real sign-in. So a code that reaches another
+program is treated as redeemable:
+
+- When port 8080 is held, `xbox-mcp sign-in` stops before it shows the link,
+  and says to run it with `--other-device`. No code is asked for.
+- With `--other-device`, the owner signs in on a phone, where nothing listens
+  on port 8080, and pastes the address the phone ends on. The terminal does
+  not show it. The weak spot moves to however the owner carries the address
+  from the phone; it works once, within minutes, and only with the verifier.
+- A device-code sign-in would avoid the redirect altogether, but Microsoft
+  refuses it for this client id ("must be marked as 'mobile'"), as asked on
+  2026-11-11.
+
 ## Consequences
 
 - **Good:** one maintained library, the same calls Home Assistant has run for
@@ -114,6 +138,8 @@ the bridge, a message, a log or this repository.
   an app registration.
 - **Worse:** a command the cloud accepts is not yet done. Every answer says
   "not confirmed" until the console's own status reads back the change.
+- **Worse:** on the owner's computer, signing in needs a phone, until the
+  program on port 8080 is stopped for the minute the sign-in takes.
 - **Neutral:** the library's pydantic models change between releases. The pin
   is moved deliberately, with the allow-list test re-read.
 

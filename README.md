@@ -63,15 +63,21 @@ in with the Microsoft account the Xbox uses, and allow the access it asks for.
 The page then sends the browser back to this computer, and the terminal says
 "Signed in" and names the consoles on the account.
 
-If another program already uses port 8080, the terminal says so first. The
-browser then ends on a page that fails or shows that other program. Copy the
-whole address from the address bar, or just the part after `code=`, and paste
-it into the terminal, which does not show it.
+If another program already uses port 8080, that program would see the
+sign-in code on its way back, so the command stops before it shows the link
+and says to sign in from a phone instead:
 
-To sign in from another device, such as a phone, add `--other-device`. The
-terminal prints the link without opening a browser; open it on the phone, sign
-in, and paste the address the phone ends on (or just its code) the same way.
-Nothing listens on the phone, so no other program sees the code.
+<!-- not run: it waits for the owner to sign in -->
+```bash
+cd ~/xbox-mcp && uv run xbox-mcp sign-in --other-device
+```
+
+This prints the link without opening a browser here. Open it on the phone and
+sign in; the phone ends on a page that fails, which is expected, since nothing
+listens there. Copy the whole address from the phone's address bar, or just
+the part after `code=`, and paste it into the terminal, which does not show
+it. The decision and its risk are in
+[ADR-XB-001](decisions/ADR-XB-001-reach-the-xbox-through-microsofts-cloud.md).
 
 The sign-in link carries a PKCE challenge, and the code is redeemed only with
 its verifier, which never leaves the computer. A code that another program sees
