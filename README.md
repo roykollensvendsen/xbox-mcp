@@ -76,10 +76,13 @@ cd ~/xbox-mcp && uv run xbox-mcp sign-in --other-device
 ```
 
 This prints the link without opening a browser here. Open it on the phone and
-sign in; the phone ends on a page that fails, which is expected, since nothing
-listens there. Copy the whole address from the phone's address bar, or just
-the part after `code=`, and paste it into the terminal, which does not show
-it. The decision and its risk are in
+sign in. The phone then lands on an error page (it cannot connect, or says
+404). That is expected, since nothing listens there. Copy the WHOLE address
+from the phone's address bar, and paste it where the terminal says "Paste the
+whole address". The terminal does not show it.
+
+The laptop's own browser works only when port 8080 is free; then the browser
+comes back to the terminal by itself, with nothing to paste. The decision and its risk are in
 [ADR-XB-001](decisions/ADR-XB-001-reach-the-xbox-through-microsofts-cloud.md).
 
 The sign-in link carries a PKCE challenge, and the code is redeemed only with
