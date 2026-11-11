@@ -74,3 +74,21 @@ name = "an unknown power state is not called on or off"
 file = "src/xbox_mcp/service.py"
 find = 'if status\.power == "unknown":'
 replace = 'if False:'
+
+[[rule]]
+name = "a tool still working at the deadline says it carries on"
+file = "src/xbox_mcp/server.py"
+find = 'answer = await asyncio\.wait_for\(asyncio\.shield\(work\), ANSWER_WITHIN\)'
+replace = 'answer = await work'
+
+[[rule]]
+name = "every tool answers with a sentence, even when it fails"
+file = "src/xbox_mcp/server.py"
+find = 'answer = \{"success": False, "outcome": "refused", "say": BROKE\}'
+replace = 'raise'
+
+[[rule]]
+name = "every simulated answer says simulated first"
+file = "src/xbox_mcp/server.py"
+find = 'if self\._simulated:'
+replace = 'if False:'
