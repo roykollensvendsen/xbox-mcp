@@ -47,6 +47,8 @@ class _Guarded:
         self._server, self._simulated = server, simulated
         #: Work still running after its answer was given, kept until it ends.
         self.running: set[asyncio.Future[Any]] = set()
+        #: What work that ran past its deadline ended with, said at the start of the next answer.
+        self.late: list[str] = []
 
     def tool(self, **options: Any) -> Callable[[Callable[..., Awaitable[Any]]], Any]:  # noqa: ANN401
         register = self._server.tool(**options)
@@ -60,12 +62,15 @@ class _Guarded:
                     answer = await asyncio.wait_for(asyncio.shield(work), ANSWER_WITHIN)
                 except TimeoutError:
                     self.running.add(work)
-                    work.add_done_callback(_ended)
+                    work.add_done_callback(self._ended)
                     work.add_done_callback(self.running.discard)
                     answer = {"success": False, "outcome": "working", "say": WORKING}
                 except Exception:  # noqa: BLE001 - whatever broke, the voice gets a sentence
                     # RULE: every tool answers with a sentence, even when it fails
                     answer = {"success": False, "outcome": "refused", "say": BROKE}
+                if self.late:
+                    answer["say"] = " ".join(f"Earlier: {said}" for said in self.late) + " " + answer["say"]
+                    self.late.clear()
                 answer["simulated"] = self._simulated
                 # RULE: every simulated answer says simulated first
                 if self._simulated:
@@ -76,11 +81,16 @@ class _Guarded:
 
         return guard
 
-
-def _ended(work: asyncio.Future[Any]) -> None:
-    """Collect what work left running ended with, so a failure there is not left unread."""
-    if not work.cancelled():
-        work.exception()
+    def _ended(self, work: asyncio.Future[Any]) -> None:
+        """Keep what work that ran past its deadline ended with, so the next answer says it."""
+        if work.cancelled():
+            return
+        if work.exception() is not None:
+            self.late.append(BROKE)
+            return
+        said = work.result().get("say")
+        if isinstance(said, str):
+            self.late.append(said)
 
 
 def build_server(service: XboxService, *, simulated: bool = False) -> MCPServer[Any]:

@@ -165,16 +165,24 @@ class XboxService:
         self.hour, self.wait = hour, wait
         self.questions = questions or Questions()
         self._console: Console | None = None
+        self._looking = asyncio.Lock()
 
     async def console(self) -> Console:
         """The console the owner means: the one named in the settings, or the only one.
 
         It is looked up once and kept, so each later answer costs one call to the cloud fewer.
         """
-        if self._console is not None:
-            return self._console
-        self._console = await self._find_console()
+        async with self._looking:
+            if self._console is None:
+                self._console = await self._find_console()
         return self._console
+
+    async def warm(self) -> None:
+        """Look the console up now, at start, so the first question does not wait for it."""
+        try:
+            await self.console()
+        except UnreachableError:
+            return
 
     async def _find_console(self) -> Console:
         consoles = await self.cloud.consoles()
@@ -359,7 +367,7 @@ class XboxService:
             return answer("refused", say, title=None)
         shows = await self._read_focus(console.id, app)
         # RULE: a start is said as done only once the xbox shows it
-        if shows != app.aumid:
+        if app.aumid is None or shows != app.aumid:
             say = f"I sent the start of {name}, but the Xbox does not show it yet: not confirmed. Ask soon."
             return answer("not_confirmed", say, title=None)
         return answer("done", f"Started {name}. The Xbox is running it.", title=name)
