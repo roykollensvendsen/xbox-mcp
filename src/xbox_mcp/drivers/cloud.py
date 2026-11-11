@@ -63,7 +63,9 @@ POWER: dict[str, Power] = {
 }
 HTTP_UNAUTHORIZED, HTTP_FORBIDDEN = 401, 403
 SIGN_IN = "Sign in again: run xbox-mcp sign-in in a terminal on the computer."
-NOT_SIGNED_IN = f"The Xbox plugin is not signed in to Microsoft. {SIGN_IN}"
+NOT_SIGNED_IN = (
+    "The Xbox plugin is not signed in to Microsoft yet. Run xbox-mcp sign-in in a terminal on the computer."
+)
 DAMAGED = f"The Microsoft sign-in file is damaged. {SIGN_IN}"
 
 
