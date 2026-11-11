@@ -8,7 +8,7 @@ from xbox_mcp.cli import build_service
 from xbox_mcp.server import ANSWER_WITHIN, build_server
 from xbox_mcp.service import XboxService
 from xbox_mcp.settings import Settings
-from xbox_mcp.simulator import SimulatedCloud
+from xbox_mcp.simulator import CONSOLE_ID, SimulatedCloud
 
 #: The tools that change nothing on the console or a TV (the plugin standard's rule 9).
 READ_ONLY = {"xbox_status"}
@@ -114,3 +114,10 @@ def test_a_simulated_wake_asks_then_wakes_the_xbox_and_shows_it_on_the_tv():
     assert asked["say"].startswith("Simulated: The Xbox is asleep.")
     assert done["say"].startswith("Simulated: Woken. The Xbox is on.")
     assert done["tv"]["outcome"] == "done"
+
+
+def test_xbox_launch_starts_a_listed_game_on_a_simulated_xbox_that_is_on():
+    service = build_service(simulate=True, settings_file=None)
+    service.cloud.power[CONSOLE_ID] = "on"
+    answer = _call(build_server(service, simulated=True), "xbox_launch", {"title": "minecraft"})
+    assert answer["say"].startswith("Simulated: Started Minecraft.")

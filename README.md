@@ -32,12 +32,14 @@ $ uv run xbox-mcp serve --simulate < /dev/null
 | `xbox_status` | Whether the Xbox is on, asleep or off, and the game or app it runs | No |
 | `xbox_power_request` | Asks whether to wake the Xbox or put it to sleep, and hands out a token; sends nothing | No |
 | `xbox_power_confirm` | With that token, within 30 seconds and once only: wakes or sleeps the Xbox, reads it back, and after a wake switches its TV to the Xbox | Wakes or sleeps the Xbox |
+| `xbox_launch` | Starts a game from the owner's own list, only if it is installed and the Xbox is on, and reads it back | Starts a game |
 
 Every answer has `say`, read aloud as it is, and `success` with `outcome`
-for a program: `done`, `unreachable` (Microsoft's cloud did not answer),
+for a program: `done`, `asked` (a power question waits for the owner's yes), `unreachable` (Microsoft's cloud did not answer),
 `signed_out` (no Microsoft sign-in yet), `refused`, `not_confirmed` (a command
 was taken, but the console's status does not show it yet), or `working` (still
-going after the voice's time, and carrying on).
+going after the voice's time, and carrying on). Every answer that does not
+succeed also says what to do next.
 
 Which actions are risky is the owner's call (the plugin standard's rule 7).
 Waking and sleeping are: each is a question read aloud, and then a confirm
@@ -52,6 +54,9 @@ In `~/.config/xbox-mcp/config.toml`, never in this repository:
 
 <!-- not run: a settings file, not a command -->
 ```toml
+[launch]                      # the only games xbox_launch may start
+titles = ["Forza Horizon 5", "Minecraft"]
+
 [tv]
 command = ["uv", "run", "--directory", "~/tv-mcp", "tv-mcp", "serve"]
 name = "the living-room TV"   # the TV, as the TV plugin knows it

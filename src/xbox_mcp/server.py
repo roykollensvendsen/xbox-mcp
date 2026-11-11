@@ -122,4 +122,15 @@ def build_server(service: XboxService, *, simulated: bool = False) -> MCPServer[
     async def xbox_power_confirm(token: str) -> dict[str, Any]:
         return await service.power_confirm(token)
 
+    @guarded.tool(
+        annotations=CHANGES,
+        description=(
+            "Start a listed game.\nTitle: words of a game on the owner's own list. Only an installed title"
+            " on that list starts, only while the Xbox is on, and the answer says 'not confirmed' until the"
+            " Xbox shows it."
+        ),
+    )
+    async def xbox_launch(title: str) -> dict[str, Any]:
+        return await service.launch(title)
+
     return server

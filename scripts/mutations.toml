@@ -102,7 +102,7 @@ replace = 'if False:'
 [[rule]]
 name = "a tv that is not on is never sent an input"
 file = "src/xbox_mcp/tv.py"
-find = 'return _alone\("The TV did not come on, so I left it alone\."\)'
+find = 'return _alone\(NOT_ON\)'
 replace = 'break'
 
 [[rule]]
@@ -133,4 +133,28 @@ replace = 'return self.questions.spend(question) or cloud_failure(error, power=N
 name = "a command is said as done only once the status reads it back"
 file = "src/xbox_mcp/service.py"
 find = 'if power != wanted:$'
+replace = 'if False:'
+
+[[rule]]
+name = "only a title on the owners list is ever started"
+file = "src/xbox_mcp/service.py"
+find = 'if len\(names\) != 1:'
+replace = 'if False:'
+
+[[rule]]
+name = "a launch is refused unless the xbox is on"
+file = "src/xbox_mcp/service.py"
+find = 'if status\.power != "on":'
+replace = 'if False:'
+
+[[rule]]
+name = "only an installed title is ever started"
+file = "src/xbox_mcp/service.py"
+find = '^        if not installed:$'
+replace = 'if False:'
+
+[[rule]]
+name = "a start is said as done only once the xbox shows it"
+file = "src/xbox_mcp/service.py"
+find = 'if shows != app\.aumid:'
 replace = 'if False:'
