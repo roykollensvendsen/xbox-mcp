@@ -7,6 +7,7 @@ only once the console shows that title in front.
 
 import asyncio
 
+from xbox_mcp.console import App
 from xbox_mcp.service import XboxService
 from xbox_mcp.settings import Settings
 from xbox_mcp.simulator import CONSOLE_ID, FORZA, MINECRAFT, SimulatedCloud
@@ -97,3 +98,12 @@ def test_an_empty_list_says_how_the_owner_adds_titles():
 def test_a_launch_is_refused_when_the_cloud_does_not_answer():
     answer = _launch(SimulatedCloud(reachable=False), "Minecraft")
     assert answer["outcome"] == "unreachable"
+
+
+def test_a_start_with_no_app_id_to_read_back_is_never_said_as_done():
+    cloud = SimulatedCloud(power="on")
+    cloud.installed = [App("Forza Horizon 5", FORZA.product_id, None)]
+    cloud.focus = None
+    answer = _launch(cloud, "Forza")
+    assert answer["outcome"] == "not_confirmed"
+    assert "not confirmed" in answer["say"]

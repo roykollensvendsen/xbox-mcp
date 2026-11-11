@@ -156,7 +156,7 @@ replace = 'if False:'
 [[rule]]
 name = "a start is said as done only once the xbox shows it"
 file = "src/xbox_mcp/service.py"
-find = 'if shows != app\.aumid:'
+find = 'if not await self\._shows\(console\.id, app\):'
 replace = 'if False:'
 
 [[rule]]

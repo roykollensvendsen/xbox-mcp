@@ -121,3 +121,47 @@ def test_xbox_launch_starts_a_listed_game_on_a_simulated_xbox_that_is_on():
     service.cloud.power[CONSOLE_ID] = "on"
     answer = _call(build_server(service, simulated=True), "xbox_launch", {"title": "minecraft"})
     assert answer["say"].startswith("Simulated: Started Minecraft.")
+
+
+def test_what_a_slow_tool_ends_with_is_said_on_the_next_answer(monkeypatch):
+    class SlowOnce(SimulatedCloud):
+        slow = True
+
+        async def consoles(self):
+            if SlowOnce.slow:
+                SlowOnce.slow = False
+                await asyncio.sleep(0.2)
+            return await super().consoles()
+
+    monkeypatch.setattr("xbox_mcp.server.ANSWER_WITHIN", 0.05)
+    server = _server(SlowOnce(power="asleep"))
+
+    async def run():
+        first = (await server.call_tool("xbox_status", {})).structured_content
+        await asyncio.sleep(0.4)
+        second = (await server.call_tool("xbox_status", {})).structured_content
+        third = (await server.call_tool("xbox_status", {})).structured_content
+        return first, second, third
+
+    first, second, third = asyncio.run(run())
+    assert first["outcome"] == "working"
+    assert second["say"].removeprefix("Simulated: ").startswith("Earlier: The Xbox is asleep.")
+    assert "Earlier" not in third["say"], "said once only"
+
+
+def test_the_console_is_looked_up_once_even_when_asked_at_the_same_time():
+    class Counting(SimulatedCloud):
+        looked = 0
+
+        async def consoles(self):
+            Counting.looked += 1
+            await asyncio.sleep(0.05)
+            return await super().consoles()
+
+    service = XboxService(Counting(), Settings())
+
+    async def run():
+        await asyncio.gather(service.warm(), service.status(), service.status())
+
+    asyncio.run(run())
+    assert Counting.looked == 1

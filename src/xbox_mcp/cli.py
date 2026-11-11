@@ -69,6 +69,17 @@ def parser() -> argparse.ArgumentParser:
     return found
 
 
+async def _serve(
+    service: XboxService, *, simulated: bool
+) -> None:  # pragma: no cover - runs until stdin closes
+    """Serve the tools, looking the console up in the background meanwhile."""
+    warming = asyncio.create_task(service.warm())
+    try:
+        await build_server(service, simulated=simulated).run_stdio_async()
+    finally:
+        warming.cancel()
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments and dispatch. Returns a process exit code."""
     args = parser().parse_args(argv)
@@ -80,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"xbox-mcp: {error}\n")
         return 2
     if args.command == "serve":  # pragma: no cover - runs until stdin closes
-        asyncio.run(build_server(service, simulated=args.simulate).run_stdio_async())
+        asyncio.run(_serve(service, simulated=args.simulate))
         return 0
     answer = asyncio.run(service.status())
     prefix = "Simulated: " if args.simulate else ""
