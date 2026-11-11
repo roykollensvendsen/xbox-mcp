@@ -22,6 +22,8 @@ STANDARD = {
     2: ["test_server.py::test_every_tool_opens_with_a_whole_sentence_the_voice_sees_in_full"],
     3: [
         "test_server.py::test_a_tools_longest_wait_fits_in_the_voices_time",
+        "test_voice_time_limit.py::test_a_tools_longest_path_is_answered_within_the_servers_deadline",
+        "test_voice_time_limit.py::test_a_tools_longest_path_finishes_within_half_a_minute",
         "test_server.py::test_a_tool_still_working_at_the_deadline_says_it_carries_on",
         "test_cold_start.py::test_a_cold_start_never_waits_on_the_xbox",
     ],
@@ -46,6 +48,8 @@ STANDARD = {
     8: ["test_tv.py::test_only_the_tv_status_and_input_tools_are_ever_called"],
     9: ["test_server.py::test_the_tools_that_only_look_are_marked_read_only_and_no_others"],
     10: [
+        "test_cloud.py::test_a_token_file_others_can_read_is_refused",
+        "test_cloud.py::test_tokens_are_written_readable_by_the_owner_alone",
         "test_private_data_scan.py::test_a_value_from_the_settings_file_is_never_committed",
         "test_private_data_scan.py::test_an_email_address_is_never_committed",
     ],

@@ -48,8 +48,9 @@ ALLOWED = frozenset(
 CLIENT_ID = "388ea51c-0b25-4029-aae2-17df49d23905"
 REDIRECT_PORT = 8080
 REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/auth/callback"
-#: Seconds one request to the cloud may take.
+#: Seconds one request to the cloud may take, and one call with a token refresh before it.
 CALL_TIMEOUT = 4.0
+CALL_WITHIN = 5.0
 #: Seconds the owner has to sign in, in the browser.
 SIGN_IN_WITHIN = 300.0
 #: The cloud's power states, as the plugin speaks of them.
@@ -171,7 +172,7 @@ class CloudConsole:
 
     async def _call(self, work: Callable[[AllowList], Awaitable[Any]]) -> Any:  # noqa: ANN401 - the library's models
         try:
-            async with asyncio.timeout(CALL_TIMEOUT * 2):
+            async with asyncio.timeout(CALL_WITHIN):
                 answer = await work(await self._client())
         except UnreachableError:
             raise
