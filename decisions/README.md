@@ -6,7 +6,7 @@ is not; it is a commit message.
 
 ## The form
 
-Every record is `ADR-XM-NNN-a-short-title.md`, with these sections in
+Every record is `ADR-XB-NNN-a-short-title.md`, with these sections in
 this order:
 
 | Section | Holds |
@@ -29,6 +29,7 @@ decision nobody writes down.
 
 | Id | Decides | Status |
 |---|---|---|
+| [ADR-XB-002](ADR-XB-002-main-keeps-the-quality-levels.md) | Main keeps the quality levels, so a pull request never records them | Accepted |
 
 What is deliberately left undone, and what would make each worth doing, is
 [`deferred.md`](deferred.md). A thing left undone with no trigger is a thing
