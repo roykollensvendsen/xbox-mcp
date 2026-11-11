@@ -10,6 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import logging
+import logging.handlers
+import os
+import pathlib
+import sys
 from typing import TYPE_CHECKING, Any
 
 from mcp.server.mcpserver import MCPServer
@@ -36,8 +41,15 @@ SIMULATED = "A SIMULATED Xbox, not a real one: say so. "
 ANSWER_WITHIN = 12.0
 #: What the voice hears when a tool is still working by then; the work carries on.
 WORKING = "That is taking a while, and it carries on. Ask again in a moment to hear how it went."
+#: Where xbox-mcp writes why it broke; $XBOX_MCP_LOG overrides it.
+LOG_FILE = pathlib.Path(os.environ.get("XBOX_MCP_LOG", "~/.local/state/xbox-mcp/xbox-mcp.log")).expanduser()
 #: What the voice hears when xbox-mcp itself fails, so it never hears only that the tool failed.
-BROKE = "That went wrong inside xbox-mcp. Try again, and if it fails again, check its log."
+BROKE = (
+    "That went wrong inside xbox-mcp. Try again, and if it fails again, the reason is written in "
+    + str(LOG_FILE).replace(str(pathlib.Path.home()), "~", 1)
+    + "."
+)
+LOG = logging.getLogger("xbox_mcp")
 
 READ_ONLY = ToolAnnotations(read_only_hint=True)
 CHANGES = ToolAnnotations(read_only_hint=False)
@@ -68,8 +80,9 @@ class _Guarded:
                     work.add_done_callback(self._ended)
                     work.add_done_callback(self.running.discard)
                     answer = {"success": False, "outcome": "working", "say": WORKING}
-                except Exception:  # noqa: BLE001 - whatever broke, the voice gets a sentence
+                except Exception:  # whatever broke, the voice gets a sentence
                     # RULE: every tool answers with a sentence, even when it fails
+                    LOG.exception("%s broke", tool.__name__)
                     answer = {"success": False, "outcome": "refused", "say": BROKE}
                 answer["say"] = self._earlier() + answer["say"]
                 answer["simulated"] = self._simulated
@@ -92,12 +105,28 @@ class _Guarded:
         """Keep what work that ran past its deadline ended with, so the next answer says it."""
         if work.cancelled():
             return
-        if work.exception() is not None:
+        error = work.exception()
+        if error is not None:
+            LOG.error("work past the deadline broke", exc_info=error)
             self.late.append(BROKE)
             return
         said = work.result().get("say")
         if isinstance(said, str):
             self.late.append(said)
+
+
+def log_to(path: pathlib.Path = LOG_FILE) -> logging.Handler:
+    """Write xbox-mcp's log to `path`, readable by the owner alone, and to stderr; the file's handler."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.touch(mode=0o600, exist_ok=True)
+    path.chmod(0o600)
+    handler = logging.handlers.RotatingFileHandler(path, maxBytes=1_000_000, backupCount=2)
+    form = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    for each in (handler, logging.StreamHandler(sys.stderr)):
+        each.setFormatter(form)
+        LOG.addHandler(each)
+    LOG.setLevel(logging.INFO)
+    return handler
 
 
 def build_server(service: XboxService, *, simulated: bool = False) -> MCPServer[Any]:
