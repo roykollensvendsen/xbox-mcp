@@ -286,6 +286,18 @@ PASTE = (
 )
 
 
+async def _await_code(url: str, say: Callable[[str], None], ask: Callable[[str], str]) -> str | None:
+    """Open `url` in the browser, and the sign-in code Microsoft sends back, by listener or by paste."""
+    server = _listen()
+    if server is None:
+        say(PASTE.format(port=REDIRECT_PORT))
+    webbrowser.open(url)
+    if server is None:
+        return code_from(await asyncio.to_thread(ask, "Address: "))
+    say(f"Waiting up to {int(SIGN_IN_WITHIN // 60)} minutes for you to sign in, in the browser...")
+    return await asyncio.to_thread(_wait_for_code, server)
+
+
 async def sign_in(
     tokens: pathlib.Path, say: Callable[[str], None], ask: Callable[[str], str] = getpass.getpass
 ) -> bool:
@@ -298,15 +310,7 @@ async def sign_in(
         auth = AuthenticationManager(session, CLIENT_ID, "", REDIRECT_URI)
         url = auth.generate_authorization_url()
         say(f"Open this page and sign in with the Microsoft account the Xbox uses:\n\n  {url}\n")
-        server = _listen()
-        if server is None:
-            say(PASTE.format(port=REDIRECT_PORT))
-        webbrowser.open(url)
-        if server is None:
-            code = code_from(await asyncio.to_thread(ask, "Address: "))
-        else:
-            say(f"Waiting up to {int(SIGN_IN_WITHIN // 60)} minutes for you to sign in, in the browser...")
-            code = await asyncio.to_thread(_wait_for_code, server)
+        code = await _await_code(url, say, ask)
         if not code:
             say("No sign-in code came back. Run xbox-mcp sign-in again, and sign in within five minutes.")
             return False

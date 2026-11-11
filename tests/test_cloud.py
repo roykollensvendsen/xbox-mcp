@@ -321,3 +321,58 @@ def test_the_paste_instructions_say_what_the_owner_will_see_and_do():
     assert "http://localhost:8080/" in text
     assert "expected" in text
     assert "not be shown" in text
+
+
+class SigningAuth(RefreshingAuth):
+    """The library's sign-in manager, handing out tokens for a code without reaching Microsoft."""
+
+    def generate_authorization_url(self):
+        return "https://login.example.com/authorize"
+
+    async def request_tokens(self, code):
+        self.oauth = None if code == "refused" else cloud.OAuth2TokenResponse.model_validate(TOKENS)
+
+
+class Session:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return None
+
+
+def _sign_in(tmp_path, monkeypatch, pasted):
+    monkeypatch.setattr(cloud, "AuthenticationManager", SigningAuth)
+    monkeypatch.setattr(cloud, "SignedSession", Session)
+    monkeypatch.setattr(cloud, "XboxLiveClient", lambda _auth: Recorder())
+    monkeypatch.setattr(cloud, "_listen", lambda: None)
+    monkeypatch.setattr(cloud.webbrowser, "open", lambda _url: True)
+    said = []
+    tokens = tmp_path / "xbox-mcp" / "tokens.json"
+    ok = asyncio.run(cloud.sign_in(tokens, said.append, ask=lambda _prompt: pasted))
+    return ok, "\n".join(said), tokens
+
+
+def test_a_sign_in_keeps_the_tokens_for_the_owner_alone_and_never_prints_them(tmp_path, monkeypatch):
+    ok, said, tokens = _sign_in(tmp_path, monkeypatch, "http://localhost:8080/auth/callback?code=c1")
+    assert ok is True
+    assert "Signed in" in said
+    assert "Xbox" in said
+    assert str(tokens) in said
+    assert tokens.stat().st_mode & 0o777 == 0o600
+    for secret in ("old-access", "old-refresh", "c1"):
+        assert secret not in said
+
+
+def test_a_sign_in_with_no_code_says_to_run_it_again(tmp_path, monkeypatch):
+    ok, said, tokens = _sign_in(tmp_path, monkeypatch, "http://localhost:8080/auth/callback?error=x")
+    assert ok is False
+    assert "Run xbox-mcp sign-in again" in said
+    assert not tokens.exists()
+
+
+def test_a_sign_in_microsoft_refuses_says_to_run_it_again(tmp_path, monkeypatch):
+    ok, said, tokens = _sign_in(tmp_path, monkeypatch, "http://localhost:8080/auth/callback?code=refused")
+    assert ok is False
+    assert "Run xbox-mcp sign-in again" in said
+    assert not tokens.exists()
