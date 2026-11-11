@@ -266,3 +266,8 @@ def test_the_mutation_tally_is_read_from_the_mutation_scripts_last_line():
     # A run that failed for any other reason is never a full score.
     assert ratchet.mutation_tally(full, returncode=1) == {"killed": 8, "total": 9}
     assert ratchet.mutation_tally("Traceback ...", returncode=1) == {"killed": 0, "total": 1}
+
+
+def test_the_printed_levels_show_the_time_budget_they_were_held_to():
+    shown = ratchet.reported({"coverage": 90.0, "complexity": {"x": 1}, "test_budget": None}, {"seconds": 60})
+    assert shown == {"coverage": 90.0, "test_budget": {"seconds": 60}}
