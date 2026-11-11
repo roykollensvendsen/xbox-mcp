@@ -104,3 +104,33 @@ name = "a tv that is not on is never sent an input"
 file = "src/xbox_mcp/tv.py"
 find = 'return _alone\("The TV did not come on, so I left it alone\."\)'
 replace = 'break'
+
+[[rule]]
+name = "a token older than thirty seconds is refused"
+file = "src/xbox_mcp/power.py"
+find = 'if self\._clock\(\) - question\.asked_at > CONFIRM_WITHIN:'
+replace = 'if False:'
+
+[[rule]]
+name = "a token is single-use"
+file = "src/xbox_mcp/power.py"
+find = '^        if self\._open == question:$'
+replace = 'if False:'
+
+[[rule]]
+name = "between 22 and 07 a wake is refused unless the tv is on"
+file = "src/xbox_mcp/service.py"
+find = '^        if on is True:$'
+replace = 'if True:'
+
+[[rule]]
+name = "a token is spent only once the command was sent"
+file = "src/xbox_mcp/service.py"
+find = 'return cloud_failure\(error, power=None\)$'
+replace = 'return self.questions.spend(question) or cloud_failure(error, power=None)'
+
+[[rule]]
+name = "a command is said as done only once the status reads it back"
+file = "src/xbox_mcp/service.py"
+find = 'if power != wanted:$'
+replace = 'if False:'
