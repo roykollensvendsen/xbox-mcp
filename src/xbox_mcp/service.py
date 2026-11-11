@@ -365,17 +365,18 @@ class XboxService:
             reason = sent.reason or "no reason given"
             say = f"Microsoft did not take the start ({reason}), so nothing changed. {REMOTE_FEATURES}"
             return answer("refused", say, title=None)
-        shows = await self._read_focus(console.id, app)
         # RULE: a start is said as done only once the xbox shows it
-        if app.aumid is None or shows != app.aumid:
+        if not await self._shows(console.id, app):
             say = f"I sent the start of {name}, but the Xbox does not show it yet: not confirmed. Ask soon."
             return answer("not_confirmed", say, title=None)
         return answer("done", f"Started {name}. The Xbox is running it.", title=name)
 
-    async def _read_focus(self, console_id: str, app: App) -> str | None:
-        """The app in focus once it is `app`, or whatever is in focus when the watch ends."""
+    async def _shows(self, console_id: str, app: App) -> bool:
+        """Whether the console shows `app` in front; never, for an app with no id to read back."""
+        if app.aumid is None:
+            return False
         status = await self._watch(console_id, lambda s: s.focus == app.aumid)
-        return status.focus if status else None
+        return status is not None and status.focus == app.aumid
 
 
 def _not_one(said: str, names: list[str], titles: tuple[str, ...]) -> str:
