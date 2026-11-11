@@ -10,6 +10,33 @@ library calls listed in
 No tool touches the store, purchases, the account, family, privacy, settings,
 friends or messages.
 
+## Try it without an Xbox
+
+`--simulate` answers from a pretend Xbox, and says so:
+
+```console
+$ uv run xbox-mcp status --simulate
+Simulated: The Xbox is asleep.
+```
+
+The server itself, as a voice session starts it; it ends when its input does:
+
+```console
+$ uv run xbox-mcp serve --simulate < /dev/null
+```
+
+## The tools
+
+| Tool | Does | Changes anything |
+|---|---|---|
+| `xbox_status` | Whether the Xbox is on, asleep or off, and the game or app it runs | No |
+
+Every answer has `say`, read aloud as it is, and `success` with `outcome`
+for a program: `done`, `unreachable` (Microsoft's cloud did not answer),
+`signed_out` (no Microsoft sign-in yet), `refused`, `not_confirmed` (a command
+was taken, but the console's status does not show it yet), or `working` (still
+going after the voice's time, and carrying on).
+
 ## Before you start
 
 The console has to be set up once, by hand. The Norwegian menu names are in

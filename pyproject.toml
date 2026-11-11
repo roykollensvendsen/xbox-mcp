@@ -10,7 +10,9 @@ requires-python = ">=3.12"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 dynamic = ["version"]
-dependencies = []
+dependencies = [
+    "mcp>=2.3",
+]
 
 [project.scripts]
 xbox-mcp = "xbox_mcp.cli:main"
