@@ -1,0 +1,1 @@
+"""The xbox-mcp package."""
