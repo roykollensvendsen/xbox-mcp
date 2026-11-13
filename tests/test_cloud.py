@@ -502,6 +502,62 @@ def test_an_expired_sign_in_says_to_sign_in_again_with_the_command(tmp_path, mon
     assert SIGN_IN_COMMAND in raised.value.say
 
 
+class ExpiresWhileRunning(RefreshingAuth):
+    """The library's sign-in manager: the first refresh works, and then Microsoft stops taking it."""
+
+    refreshes = 0
+
+    async def refresh_tokens(self):
+        type(self).refreshes += 1
+        if type(self).refreshes > 1:
+            await ExpiredAuth.refresh_tokens(self)
+
+
+class RefreshingClient:
+    """The library's client, refreshing the sign-in before every request, as the real one does."""
+
+    def __init__(self, auth):
+        self._auth, self._answers = auth, Recorder()
+
+    def __getattr__(self, provider):
+        return _Refreshes(self._auth, getattr(self._answers, provider))
+
+
+class _Refreshes:
+    def __init__(self, auth, provider):
+        self._auth, self._provider = auth, provider
+
+    def __getattr__(self, method):
+        async def call(*args, **kwargs):
+            await self._auth.refresh_tokens()
+            return await getattr(self._provider, method)(*args, **kwargs)
+
+        return call
+
+
+def test_a_sign_in_refused_while_the_plugin_runs_says_to_sign_in_again(tmp_path, monkeypatch):
+    tokens = tmp_path / "tokens.json"
+    cloud.write_tokens(tokens, json.dumps(TOKENS))
+    monkeypatch.setattr(ExpiresWhileRunning, "refreshes", 0)
+    monkeypatch.setattr(cloud, "AuthenticationManager", ExpiresWhileRunning)
+    monkeypatch.setattr(cloud, "SignedSession", lambda: None)
+    monkeypatch.setattr(cloud, "XboxLiveClient", RefreshingClient)
+    driver = CloudConsole(tokens=tokens)
+    with pytest.raises(SignedOutError) as raised:
+        asyncio.run(driver.status("F4000000000000A1"))
+    assert "expired" in raised.value.say
+    assert SIGN_IN_COMMAND in raised.value.say
+
+
+def test_a_command_microsoft_answers_with_a_bad_request_is_not_a_lost_sign_in():
+    request = httpx.Request("POST", "https://xccs.xboxlive.com/commands")
+    response = httpx.Response(400, request=request)
+    driver, _ = _driver(fails=httpx.HTTPStatusError("bad", request=request, response=response))
+    with pytest.raises(UnreachableError) as raised:
+        asyncio.run(driver.wake("F4000000000000A1"))
+    assert not isinstance(raised.value, SignedOutError)
+
+
 def test_a_sign_in_the_library_refuses_says_to_sign_in_again():
     driver, _ = _driver(fails=AuthenticationException("Failed to authorize you!"))
     with pytest.raises(SignedOutError) as raised:
