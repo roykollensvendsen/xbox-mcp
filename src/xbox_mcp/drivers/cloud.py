@@ -78,6 +78,8 @@ NOT_SIGNED_IN = (
 EXPIRED = f"The Xbox plugin's Microsoft sign-in has expired. {SIGN_IN}"
 #: Microsoft's answers to a refresh token it no longer takes.
 REFUSED_REFRESH = frozenset({400, 401, 403})
+#: Where the library renews the sign-in, before every request it makes.
+SIGN_IN_HOSTS = frozenset({"login.live.com", "user.auth.xboxlive.com", "xsts.auth.xboxlive.com"})
 DAMAGED = f"The Microsoft sign-in file is damaged. {SIGN_IN}"
 
 
@@ -209,6 +211,19 @@ def read_tokens(path: pathlib.Path) -> OAuth2TokenResponse:
         raise _signed_out(DAMAGED) from error
 
 
+def _failed(error: Exception) -> UnreachableError:
+    """The plugin's error for a failed call; a sign-in Microsoft stopped taking is said as expired."""
+    # RULE: a sign-in refused while the plugin runs says to sign in again
+    if isinstance(error, httpx.HTTPStatusError) and _refused_refresh(error):
+        return _signed_out(EXPIRED)
+    return _refused(error)
+
+
+def _refused_refresh(error: httpx.HTTPStatusError) -> bool:
+    """Whether Microsoft's sign-in service refused to renew the sign-in."""
+    return error.request.url.host in SIGN_IN_HOSTS and error.response.status_code in REFUSED_REFRESH
+
+
 async def _refreshed(auth: AuthenticationManager) -> None:
     """Refresh the sign-in; one Microsoft no longer takes is said as expired, with what to do."""
     try:
@@ -259,7 +274,7 @@ class CloudConsole:
         except AuthenticationException as error:
             raise _signed_out(EXPIRED) from error
         except (httpx.HTTPError, TimeoutError, ValueError) as error:
-            raise _refused(error) from error
+            raise _failed(error) from error
         self._keep()
         return answer
 
