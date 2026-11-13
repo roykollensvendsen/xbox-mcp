@@ -36,7 +36,16 @@ from pythonxbox.common.exceptions import AuthenticationException
 from pythonxbox.common.signed_session import SignedSession
 
 from xbox_mcp import console
-from xbox_mcp.console import App, Console, ConsoleStatus, Power, Sent, SignedOutError, UnreachableError
+from xbox_mcp.console import (
+    App,
+    Console,
+    ConsoleStatus,
+    MayHaveArrivedError,
+    Power,
+    Sent,
+    SignedOutError,
+    UnreachableError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -167,7 +176,11 @@ def _refused(error: Exception) -> UnreachableError:
         HTTP_FORBIDDEN,
     ):
         return _signed_out(f"Microsoft refused the sign-in. {SIGN_IN}")
-    return UnreachableError(f"the cloud did not answer: {type(error).__name__}")
+    message = f"the cloud did not answer: {type(error).__name__}"
+    # RULE: only a connection that never opened is said as never sent
+    if isinstance(error, httpx.ConnectError | httpx.ConnectTimeout):
+        return UnreachableError(message)
+    return MayHaveArrivedError(message)
 
 
 def write_tokens(path: pathlib.Path, text: str) -> None:

@@ -212,3 +212,21 @@ name = "a night that starts when it ends is refused"
 file = "src/xbox_mcp/settings.py"
 find = 'if starts == ends:'
 replace = 'if False:'
+
+[[rule]]
+name = "only a connection that never opened is said as never sent"
+file = "src/xbox_mcp/drivers/cloud.py"
+find = 'if isinstance\(error, httpx\.ConnectError \| httpx\.ConnectTimeout\):'
+replace = 'if True:'
+
+[[rule]]
+name = "a power command that may have arrived is never sent again"
+file = "src/xbox_mcp/service.py"
+find = 'return await self\._after\(action, console_id=question\.console_id\)'
+replace = 'return cloud_failure(UnreachableError("lost"), power=None)'
+
+[[rule]]
+name = "a stop that may have arrived is never sent again"
+file = "src/xbox_mcp/service.py"
+find = 'sent = Sent\(accepted=True\)  # it may have arrived'
+replace = 'raise'

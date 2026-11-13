@@ -63,6 +63,10 @@ class UnreachableError(Exception):
         self.say = say
 
 
+class MayHaveArrivedError(UnreachableError):
+    """A command left for Microsoft, but no answer came back, so it may have been carried out."""
+
+
 class SignedOutError(UnreachableError):
     """There is no Microsoft sign-in, or it has run out."""
 

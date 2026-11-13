@@ -20,7 +20,9 @@ from xbox_mcp.console import (
     Cloud,
     Console,
     ConsoleStatus,
+    MayHaveArrivedError,
     Power,
+    Sent,
     SignedOutError,
     UnreachableError,
 )
@@ -281,6 +283,10 @@ class XboxService:
         command = self.cloud.wake if action == "wake" else self.cloud.sleep
         try:
             sent = await command(question.console_id)
+        except MayHaveArrivedError:
+            # RULE: a power command that may have arrived is never sent again
+            self.questions.spend(question)
+            return await self._after(action, console_id=question.console_id)
         except UnreachableError as error:
             # RULE: a token is spent only once the command was sent
             return cloud_failure(error, power=None)
@@ -463,8 +469,12 @@ class XboxService:
         if status.power != "on" or status.focus != question.over:
             self.questions.spend(question)
             return answer("refused", CHANGED, title=None)
-        sent = await self.cloud.home(question.console_id)
+        # RULE: a stop that may have arrived is never sent again
         self.questions.spend(question)
+        try:
+            sent = await self.cloud.home(question.console_id)
+        except MayHaveArrivedError:
+            sent = Sent(accepted=True)  # it may have arrived: read it back, and never send it again
         if not sent.accepted:
             reason = sent.reason or "no reason given"
             say = f"Microsoft did not take the command ({reason}), so nothing changed. {REMOTE_FEATURES}"
