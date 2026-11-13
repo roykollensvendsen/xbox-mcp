@@ -69,7 +69,7 @@ class _Path:
         microsoft = self._microsoft
         if microsoft.fail_times > 0:
             microsoft.fail_times -= 1
-            if isinstance(microsoft.failure, httpx.ConnectError):
+            if isinstance(microsoft.failure, httpx.ConnectError | httpx.ConnectTimeout):
                 raise microsoft.failure  # it never left this machine
             microsoft.sent.append(method)  # it reached Microsoft ...
             if microsoft.failure == "slow":
