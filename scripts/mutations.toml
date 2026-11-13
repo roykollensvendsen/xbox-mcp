@@ -178,6 +178,12 @@ find = '"code_verifier": self\.verifier,'
 replace = ''
 
 [[rule]]
+name = "a sign-in refused while the plugin runs says to sign in again"
+file = "src/xbox_mcp/drivers/cloud.py"
+find = 'if isinstance\(error, httpx\.HTTPStatusError\) and _refused_refresh\(error\):'
+replace = 'if False:'
+
+[[rule]]
 name = "a code is never asked for while another program holds the redirect port"
 file = "src/xbox_mcp/drivers/cloud.py"
 find = 'if server is None and not other_device:'
