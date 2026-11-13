@@ -46,7 +46,9 @@ succeed also says what to do next.
 
 Which actions are risky is the owner's call (the plugin standard's rule 7).
 Waking and sleeping are: each is a question read aloud, and then a confirm
-with a single-use token after the owner's spoken yes. Between 22:00 and 07:00
+with a single-use token after the owner's spoken yes. When Microsoft's answer
+to a command is lost, the command may still have arrived, so the yes is used up
+and the plugin reads the Xbox back instead of sending it again. Between 22:00 and 07:00
 a wake is refused unless the TV the Xbox is plugged into is already on,
 because waking the Xbox switches that TV on through HDMI-CEC. By day, the
 question says the TV will come on too.
