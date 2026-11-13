@@ -222,8 +222,8 @@ replace = 'if True:'
 [[rule]]
 name = "a power command that may have arrived is never sent again"
 file = "src/xbox_mcp/service.py"
-find = 'return await self\._after\(action, console_id=question\.console_id\)'
-replace = 'return cloud_failure(UnreachableError("lost"), power=None)'
+find = 'return Sent\(accepted=True\)$'
+replace = 'raise'
 
 [[rule]]
 name = "a stop that may have arrived is never sent again"
