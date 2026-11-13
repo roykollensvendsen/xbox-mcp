@@ -280,13 +280,8 @@ class XboxService:
         if night:
             self.questions.spend(question)
             return answer("refused", night)
-        command = self.cloud.wake if action == "wake" else self.cloud.sleep
         try:
-            sent = await command(question.console_id)
-        except MayHaveArrivedError:
-            # RULE: a power command that may have arrived is never sent again
-            self.questions.spend(question)
-            return await self._after(action, console_id=question.console_id)
+            sent = await self._send_power(action, question.console_id)
         except UnreachableError as error:
             # RULE: a token is spent only once the command was sent
             return cloud_failure(error, power=None)
@@ -296,6 +291,15 @@ class XboxService:
             say = f"Microsoft did not take the command ({reason}), so nothing changed. {REMOTE_FEATURES}"
             return answer("refused", say, power=None)
         return await self._after(action, question.console_id)
+
+    async def _send_power(self, action: Action, console_id: str) -> Sent:
+        """Send `action`; a command whose answer was lost counts as taken, and is read back."""
+        command = self.cloud.wake if action == "wake" else self.cloud.sleep
+        try:
+            return await command(console_id)
+        except MayHaveArrivedError:
+            # RULE: a power command that may have arrived is never sent again
+            return Sent(accepted=True)
 
     async def _watch(self, console_id: str, done: Callable[[ConsoleStatus], bool]) -> ConsoleStatus | None:
         """The console's status once `done` holds for it, or the last one read when the watch ends."""

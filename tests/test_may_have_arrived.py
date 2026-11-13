@@ -21,6 +21,7 @@ from pythonxbox.api.provider.smartglass.models import (
     SmartglassConsoleList,
     SmartglassConsoleStatus,
 )
+from test_cloud import APP, CONSOLE, OK, STATUS
 
 from xbox_mcp.console import MayHaveArrivedError, UnreachableError
 from xbox_mcp.drivers import cloud
@@ -28,8 +29,7 @@ from xbox_mcp.drivers.cloud import CloudConsole
 from xbox_mcp.service import XboxService
 from xbox_mcp.settings import Settings
 
-MINECRAFT = "Microsoft.MinecraftUWPConsole_8wekyb3d8bbwe!Game"
-OK = {"errorCode": "OK", "errorMessage": None}
+MINECRAFT = APP["aumid"]
 COMMANDS = ("wake_up", "turn_off", "go_home")
 
 
@@ -54,44 +54,14 @@ class _Path:
     async def __call__(self, *_args, **_kwargs):
         microsoft, method = self._microsoft, self._path.rsplit(".", 1)[-1]
         if method == "get_console_list":
-            console = {
-                "id": "F4000000000000A1",
-                "name": "Xbox",
-                "consoleType": "XboxSeriesX",
-                "powerState": microsoft.power,
-                "consoleStreamingEnabled": False,
-                "digitalAssistantRemoteControlEnabled": False,
-                "remoteManagementEnabled": True,
-            }
-            return SmartglassConsoleList.model_validate({"result": [console], "status": OK})
+            listed = [{**CONSOLE, "powerState": microsoft.power}]
+            return SmartglassConsoleList.model_validate({"result": listed, "status": OK})
         if method == "get_console_status":
             focus = MINECRAFT if microsoft.power == "On" else ""
-            return SmartglassConsoleStatus.model_validate(
-                {
-                    "powerState": microsoft.power,
-                    "consoleStreamingEnabled": False,
-                    "digitalAssistantRemoteControlEnabled": False,
-                    "remoteManagementEnabled": True,
-                    "focusAppAumid": focus,
-                    "isTvConfigured": True,
-                    "playbackState": "Unknown",
-                    "status": OK,
-                }
-            )
+            status = {**STATUS, "powerState": microsoft.power, "focusAppAumid": focus}
+            return SmartglassConsoleStatus.model_validate(status)
         if method == "get_installed_apps":
-            app = {
-                "oneStoreProductId": "9MVXMVT8ZKWC",
-                "titleId": 1,
-                "aumid": MINECRAFT,
-                "name": "Minecraft",
-                "contentType": "Game",
-                "storageDeviceId": "S1",
-                "uniqueId": "U1",
-                "version": 1,
-                "sizeInBytes": 1,
-                "installTime": "2026-01-01T00:00:00Z",
-            }
-            return InstalledPackagesList.model_validate({"result": [app], "status": OK})
+            return InstalledPackagesList.model_validate({"result": [APP], "status": OK})
         assert method in COMMANDS, method
         return await self._command(method)
 
