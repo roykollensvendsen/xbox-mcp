@@ -1,0 +1,5 @@
+[[rule]]
+name = "a test leaves the stop handlers as it found them"
+file = "tests/conftest.py"
+find = 'signal\.signal\(each, handler\)'
+replace = 'pass'
