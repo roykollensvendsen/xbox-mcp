@@ -2,8 +2,11 @@
 """The TV step through a real stdio child, as ADR-XB-003 describes, against a stand-in for tv-mcp."""
 
 import asyncio
+import contextlib
 import json
+import os
 import pathlib
+import signal
 import sys
 import threading
 import time
@@ -59,11 +62,20 @@ def test_the_tv_plugin_is_closed_after_each_use(tmp_path):
 def _within(seconds, coroutine):
     """Run `coroutine`, failing in plain words if it is still running after `seconds`."""
     answer = {}
-    runner = threading.Thread(target=lambda: answer.update(it=asyncio.run(coroutine)), daemon=True)
+
+    def run():
+        try:
+            answer["it"] = asyncio.run(coroutine)
+        except Exception as error:  # noqa: BLE001 - raised again in the test's own thread
+            answer["error"] = error
+
+    runner = threading.Thread(target=run, daemon=True)
     runner.start()
     runner.join(seconds)
     if runner.is_alive():
         pytest.fail(f"The TV step hung: it was still running {seconds} s after its time limit ran out")
+    if "error" in answer:
+        raise answer["error"]
     return answer["it"]
 
 
@@ -85,18 +97,58 @@ def _running_with(marker, within=10.0):
         time.sleep(0.05)
 
 
-def test_a_tv_plugin_whose_start_is_cut_short_is_still_stopped(tmp_path, monkeypatch):
-    """The TV's time runs out while its plugin is still starting, as on a busy machine."""
-    monkeypatch.setattr(tv, "TV_WITHIN", 0.5)
+def _slow_plugin(tmp_path):
+    """A TV plugin that waits a minute before it answers anything."""
     log = tmp_path / "calls.log"
     log.touch()
     command = [sys.executable, str(FAKE), "on", str(log), "60", str(tmp_path / "pid")]
-    plugin = TvPlugin(command=command, tv="the den", device="Xbox")
+    return TvPlugin(command=command, tv="the den", device="Xbox"), log
+
+
+@pytest.fixture
+def stop_the_fake(tmp_path):
+    """End the stand-in TV plugin whatever the test found, so a failing test leaves nothing running."""
+    yield
+    pid = tmp_path / "pid"
+    if pid.exists():
+        with contextlib.suppress(ProcessLookupError, ValueError):
+            os.kill(int(pid.read_text()), signal.SIGKILL)
+
+
+@pytest.mark.usefixtures("stop_the_fake")
+def test_a_tv_plugin_whose_start_is_cut_short_is_still_stopped(tmp_path, monkeypatch):
+    """The TV's time runs out while its plugin is still starting, as on a busy machine."""
+    monkeypatch.setattr(tv, "TV_WITHIN", 0.5)
+    plugin, log = _slow_plugin(tmp_path)
     answer = _within(30, show_xbox(plugin, settle=0.0))
     assert answer["outcome"] == "working", answer
     assert not plugin.is_open
-    left = _running_with(str(log))
-    assert not left, f"the TV plugin was left running after its start was cut short: {left}"
+    if pathlib.Path("/proc").is_dir():  # where processes can be listed by their command
+        left = _running_with(str(log))
+        assert not left, f"the TV plugin was left running after its start was cut short: {left}"
+
+
+@pytest.mark.usefixtures("stop_the_fake")
+def test_a_stop_that_fails_never_hides_why_the_start_was_cut_short(tmp_path, monkeypatch):
+    monkeypatch.setattr(tv, "TV_WITHIN", 0.5)
+    plugin, _ = _slow_plugin(tmp_path)
+    stop = TvPlugin.__aexit__
+
+    async def failing_stop(self, *exc):
+        try:
+            await stop(self, *exc)
+        finally:
+            failed = "the stop failed"
+            raise RuntimeError(failed)  # replaces whatever the stop raised, as a failing stop does
+
+    monkeypatch.setattr(TvPlugin, "__aexit__", failing_stop)
+    with pytest.raises(TimeoutError):
+        _within(30, _started_within(plugin, 0.5))
+
+
+async def _started_within(plugin, seconds):
+    async with asyncio.timeout(seconds):
+        await plugin.__aenter__()
 
 
 def test_a_tv_plugin_that_cannot_start_is_said_not_raised(tmp_path):
