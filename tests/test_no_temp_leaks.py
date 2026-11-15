@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 
+import cleanup
 import pytest
 
 ROOT = pathlib.Path(__file__).parent.parent
@@ -40,7 +41,8 @@ def _project(tmp_path, test_body):
     (project / "scripts" / "mutations" / "src" / "ruled.py").mkdir(parents=True)
     (project / "src").mkdir()
     (project / "tests").mkdir()
-    (project / "scripts" / "mutate.py").write_text((ROOT / "scripts" / "mutate.py").read_text())
+    for script in ("mutate.py", "cleanup.py"):
+        (project / "scripts" / script).write_text((ROOT / "scripts" / script).read_text())
     (project / "scripts" / "mutations" / "src" / "ruled.py" / "one-is-one.toml").write_text(ROW)
     (project / "src" / "ruled.py").write_text(RULED)
     (project / "tests" / "test_ruled.py").write_text(
@@ -147,28 +149,17 @@ def _mutating(tmp_path, slowed=""):
     return project, folder, process
 
 
-@pytest.mark.parametrize("stop", STOPS)
-def test_a_stopped_mutation_run_cleans_up_after_itself(tmp_path, stop):
-    project, folder, process = _mutating(tmp_path)
-    _stop_once(process, lambda: any(folder.glob("*/run-*")), stop)
-    assert _left_in(folder) == []
-    assert (project / "src" / "ruled.py").read_text() == RULED
-
-
-def test_a_second_stop_cannot_cut_a_mutation_run_s_cleanup_short(tmp_path):
-    project, folder, process = _mutating(tmp_path, slowed="mutate.py")
-    _stop_twice(process, lambda: any(folder.glob("*/run-*")), tmp_path / "started")
-    assert _left_in(folder) == []
-    assert (project / "src" / "ruled.py").read_text() == RULED
-
-
 def _ratchet(tmp_path, slowed=""):
     """The ratchet's measure, with a stand-in `uv` that records its arguments and then waits."""
     bin_ = tmp_path / "bin"
     bin_.mkdir()
     called = tmp_path / "called.txt"
     uv = bin_ / "uv"
-    uv.write_text(f'#!/bin/sh\necho "$@" > {called}\nexec sleep 60\n')
+    # `uv run python ...` is the check of where the package comes from: let it through.
+    uv.write_text(
+        f'#!/bin/sh\nif [ "$1 $2" = "run python" ]; then shift 2; exec {sys.executable} "$@"; fi\n'
+        f'echo "$@" > {called}\nexec sleep 60\n'
+    )
     uv.chmod(0o755)
     folder, env = _temporary(tmp_path, slowed)
     env["PATH"] = f"{bin_}{os.pathsep}{env['PATH']}"
@@ -192,14 +183,66 @@ def test_the_ratchet_s_test_run_keeps_its_files_in_its_own_folder(tmp_path):
     assert pathlib.Path(basetemp[0]).is_relative_to(folder)
 
 
+def _started(tmp_path, script, slowed=""):
+    """The script under way: the mutation tool in a tiny project, or the ratchet with a stand-in uv."""
+    if script == "mutate.py":
+        project, folder, process = _mutating(tmp_path, slowed)
+        return process, lambda: any(folder.glob("*/run-*")), folder, project
+    process, called, folder = _ratchet(tmp_path, slowed)
+    return process, called.exists, folder, None
+
+
+SCRIPTS = ["mutate.py", "ratchet.py"]
+
+
+@pytest.mark.parametrize("script", SCRIPTS)
 @pytest.mark.parametrize("stop", STOPS)
-def test_a_stopped_ratchet_cleans_up_its_temporary_files(tmp_path, stop):
-    process, called, folder = _ratchet(tmp_path)
-    _stop_once(process, called.exists, stop)
+def test_a_stopped_run_cleans_up_after_itself(tmp_path, script, stop):
+    process, under_way, folder, project = _started(tmp_path, script)
+    _stop_once(process, under_way, stop)
     assert _left_in(folder) == []
+    if project:
+        assert (project / "src" / "ruled.py").read_text() == RULED
 
 
-def test_a_second_stop_cannot_cut_a_ratchet_s_cleanup_short(tmp_path):
-    process, called, folder = _ratchet(tmp_path, slowed="ratchet.py")
-    _stop_twice(process, called.exists, tmp_path / "started")
+@pytest.mark.parametrize("script", SCRIPTS)
+def test_a_second_stop_cannot_cut_a_run_s_cleanup_short(tmp_path, script):
+    process, under_way, folder, project = _started(tmp_path, script, slowed=script)
+    _stop_twice(process, under_way, tmp_path / "started")
     assert _left_in(folder) == []
+    if project:
+        assert (project / "src" / "ruled.py").read_text() == RULED
+
+
+TEST_RUN = """
+import tempfile
+
+
+def test_it_makes_temporary_files(tmp_path):
+    (tmp_path / "a.txt").write_text("x")
+    tempfile.mkdtemp()
+    tempfile.mkstemp()
+"""
+
+
+def test_a_test_run_removes_its_temporary_folder_when_it_ends(tmp_path):
+    """A run of this suite's own set-up, in a tiny project: nothing stays but a live run's folder."""
+    project = tmp_path / "project"
+    (project / "tests").mkdir(parents=True)
+    (project / "scripts").mkdir()
+    (project / "scripts" / "cleanup.py").write_text((ROOT / "scripts" / "cleanup.py").read_text())
+    (project / "tests" / "conftest.py").write_text((ROOT / "tests" / "conftest.py").read_text())
+    (project / "tests" / "test_it.py").write_text(TEST_RUN)
+    (project / "pyproject.toml").write_text('[tool.pytest.ini_options]\npythonpath = ["scripts"]\n')
+    folder, env = _temporary(tmp_path)
+    live = cleanup.HeldFolder("xbox-mcp-tests-", folder)
+    killed = folder / "xbox-mcp-tests-killed"
+    killed.mkdir()
+    (killed / cleanup.LOCK).write_text("")
+    command = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
+    done = subprocess.run(command, cwd=project, env=env, capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert _left_in(folder) == sorted(
+        str(p.relative_to(folder)) for p in [live.path, live.path / cleanup.LOCK]
+    )
+    live.remove()

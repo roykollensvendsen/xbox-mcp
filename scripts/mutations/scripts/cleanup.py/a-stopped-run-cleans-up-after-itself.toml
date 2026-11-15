@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stopped run cleans up after itself"
+file = "scripts/cleanup.py"
+find = 'signal\.signal\(each, _stopped\)'
+replace = 'pass'

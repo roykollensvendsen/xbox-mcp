@@ -1,0 +1,5 @@
+[[rule]]
+name = "a folder with no lock is left alone for the grace period"
+file = "scripts/cleanup.py"
+find = 'return time\.time\(\) - found\.st_mtime > GRACE_SECONDS'
+replace = 'return True'

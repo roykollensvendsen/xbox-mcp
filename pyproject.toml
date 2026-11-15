@@ -60,6 +60,8 @@ warn_unused_configs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The scripts' shared cleanup is imported by name, as the scripts themselves import it.
+pythonpath = ["scripts"]
 # A passing test's temporary files are deleted at once, and only the latest run's
 # failures are kept to read: a day of runs otherwise filled the machine's /tmp.
 tmp_path_retention_count = 1

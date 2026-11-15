@@ -26,17 +26,12 @@ import json
 import os
 import pathlib
 import re
-import shutil
-import signal
-import stat
 import subprocess
 import sys
 import tempfile
 import tomllib
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
+import cleanup
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 #: One row per file: scripts/mutations/<the row's file, whole>/<the rule's words>.toml. Every pull
@@ -127,42 +122,10 @@ def line_of(text: str, pattern: str, occurrence: int) -> int:
     raise SystemExit(msg)
 
 
-def _open_up(place: pathlib.Path) -> None:
-    """Give the owner back every right on one folder or file, adding to the rights it has.
-
-    A link is left alone: changing its rights would change whatever it points to,
-    which may be outside the run's folder.
-    """
-    if place.is_symlink():
-        return
-    with contextlib.suppress(OSError):
-        place.chmod(place.stat().st_mode | stat.S_IRWXU)
-
-
-def _writable_again(func: Callable[[str], object], path: str, _exc: object) -> None:
-    """Let a refused delete through: open up the path and its folder, then try again."""
-    for place in (pathlib.Path(path).parent, pathlib.Path(path)):
-        _open_up(place)
-    func(path)
-
-
-def _remove(folder: pathlib.Path) -> None:
-    """Delete a run's folder, even where a test took away the rights to read or delete it."""
-    if not folder.exists():
-        return
-    # A folder a test shut (mode 0) cannot even be listed, so open every folder first;
-    # the handler then covers anything that still refuses.
-    for place, folders, _ in os.walk(folder):
-        for name in folders:
-            _open_up(pathlib.Path(place) / name)
-    shutil.rmtree(folder, onexc=_writable_again)
-
-
 def sweep() -> None:
-    """Remove what an earlier run, killed before it could clean up, left behind."""
+    """Remove what an earlier run, killed before it could clean up, left behind; never a live run's."""
     # RULE: a killed run's temporary files are swept at the next start
-    for left in MUTATE_TMP.iterdir() if MUTATE_TMP.is_dir() else []:
-        _remove(left)
+    cleanup.sweep(cleanup.ours(MUTATE_TMP), "run-")
 
 
 def repair() -> None:
@@ -210,8 +173,7 @@ def run_suite() -> tuple[int, list[str]]:
     # the wrong rule, so no bytecode is written at all.
     # RULE: two mutations never share a bytecode cache
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    MUTATE_TMP.mkdir(parents=True, exist_ok=True)
-    temporary = pathlib.Path(tempfile.mkdtemp(prefix="run-", dir=MUTATE_TMP))
+    held = cleanup.HeldFolder("run-", cleanup.ours(MUTATE_TMP))
     try:
         r = subprocess.run(  # noqa: S603  -- every argument is this script's own
             [
@@ -223,7 +185,7 @@ def run_suite() -> tuple[int, list[str]]:
                 "--color=no",
                 "-p",
                 "no:cacheprovider",
-                f"--basetemp={temporary}",
+                f"--basetemp={held.path / 'pytest'}",  # beside the lock: pytest empties its own
             ],
             capture_output=True,
             text=True,
@@ -233,7 +195,7 @@ def run_suite() -> tuple[int, list[str]]:
         )
     finally:
         # RULE: a suite run leaves no temporary files behind
-        _remove(temporary)
+        held.remove()
     # --color=no covers the usual run; stripping covers a configuration that
     # turns colour back on, which would otherwise make every kill unattributable.
     # RULE: a coloured failure line is still attributed
@@ -350,36 +312,18 @@ which `tests/test_rules_have_evidence.py` requires.
 """
 
 
-#: The signals that stop a run from outside: Ctrl-C, a cancelled CI job, and a closed terminal.
-STOPS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
-
-
-def _stopped(signum: int, _frame: object) -> None:
-    """End the run as an error would, so every ``finally`` runs: the file is restored, the files removed."""
-    # Once stopping, a second stop would cut the cleanup short, so every further stop is ignored.
-    # RULE: a second stop cannot cut a mutation run's cleanup short
-    for each in STOPS:
-        signal.signal(each, signal.SIG_IGN)
-    if signum == signal.SIGINT:
-        raise KeyboardInterrupt
-    raise SystemExit(128 + signum)
-
-
-def stop_cleanly() -> None:
-    """Make a stop from outside end the run through its ``finally`` blocks, not on the spot."""
-    # RULE: a stopped mutation run cleans up after itself
-    for each in STOPS:
-        signal.signal(each, _stopped)
-
-
 def main() -> int:
     """Mutate every rule in turn, and leave the temporary folder as it was found."""
-    stop_cleanly()
+    cleanup.stop_cleanly()
     try:
+        cleanup.from_this_checkout(ROOT, [sys.executable])
         return mutate_all()
     finally:
+        # Only this run's own folders were removed; the shared one goes once it is empty,
+        # and never while another run of this checkout is using it.
         # RULE: a mutation run leaves nothing in the temporary folder
-        _remove(MUTATE_TMP)
+        with contextlib.suppress(OSError):
+            MUTATE_TMP.rmdir()
 
 
 if __name__ == "__main__":
