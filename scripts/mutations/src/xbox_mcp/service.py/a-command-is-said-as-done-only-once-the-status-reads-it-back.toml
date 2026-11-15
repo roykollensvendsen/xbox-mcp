@@ -1,0 +1,5 @@
+[[rule]]
+name = "a command is said as done only once the status reads it back"
+file = "src/xbox_mcp/service.py"
+find = 'if power != wanted:$'
+replace = 'if False:'

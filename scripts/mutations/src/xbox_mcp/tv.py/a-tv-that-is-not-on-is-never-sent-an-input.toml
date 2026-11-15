@@ -1,0 +1,5 @@
+[[rule]]
+name = "a tv that is not on is never sent an input"
+file = "src/xbox_mcp/tv.py"
+find = 'return _alone\(NOT_ON\)'
+replace = 'break'

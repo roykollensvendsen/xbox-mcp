@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a listed title is ever sent home"
+file = "src/xbox_mcp/service.py"
+find = 'if _plain_words\(running\.name\) not in \{_plain_words\(t\) for t in self\.settings\.titles\}:'
+replace = 'if False:'

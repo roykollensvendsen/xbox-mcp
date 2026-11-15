@@ -1,0 +1,5 @@
+[[rule]]
+name = "a launch is refused unless the xbox is on"
+file = "src/xbox_mcp/service.py"
+find = 'if status\.power != "on":'
+replace = 'if False:'

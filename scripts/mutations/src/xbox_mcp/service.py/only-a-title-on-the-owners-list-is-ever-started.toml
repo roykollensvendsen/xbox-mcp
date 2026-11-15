@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a title on the owners list is ever started"
+file = "src/xbox_mcp/service.py"
+find = 'if len\(names\) != 1:'
+replace = 'if False:'

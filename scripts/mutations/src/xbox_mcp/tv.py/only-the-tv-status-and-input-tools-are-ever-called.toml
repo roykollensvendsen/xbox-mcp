@@ -1,0 +1,5 @@
+[[rule]]
+name = "only the tv status and input tools are ever called"
+file = "src/xbox_mcp/tv.py"
+find = 'if tool not in self\.TOOLS:'
+replace = 'if False:'

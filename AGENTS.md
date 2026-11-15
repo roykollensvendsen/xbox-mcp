@@ -40,8 +40,8 @@ Microsoft's cloud; why, and what it reuses, is in [`decisions/`](decisions/READM
    `scripts/no_session_links.py` refuses it.
 8. **Never touch the real console** unless the owner asks for it in this
    session. The simulator is for every try until then.
-9. Every line marked `# RULE:` has a row in `scripts/mutations.toml` and a
-   test named after it, and `uv run python scripts/mutate.py` must show each
+9. Every line marked `# RULE:` has a row of its own under `scripts/mutations/`
+   and a test named after it, and `uv run python scripts/mutate.py` must show each
    rule's own test going red.
 
 ## Commands

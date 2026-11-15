@@ -1,0 +1,5 @@
+[[rule]]
+name = "a cloud that does not answer is not called on or off"
+file = "src/xbox_mcp/service.py"
+find = 'return answer\("unreachable", UNREACHABLE, power=None, running=None\)'
+replace = 'return answer("done", UNREACHABLE, power="off", running=None)'

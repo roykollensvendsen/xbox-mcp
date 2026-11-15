@@ -1,0 +1,5 @@
+[[rule]]
+name = "a power command that may have arrived is never sent again"
+file = "src/xbox_mcp/service.py"
+find = 'return Sent\(accepted=True\)$'
+replace = 'raise'

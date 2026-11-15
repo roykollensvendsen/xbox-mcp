@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stop is checked again at the yes"
+file = "src/xbox_mcp/service.py"
+find = 'if status\.power != "on" or status\.focus != question\.over:'
+replace = 'if False:'
