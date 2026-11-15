@@ -1,0 +1,5 @@
+[[rule]]
+name = "an unknown power state is not called on or off"
+file = "src/xbox_mcp/service.py"
+find = 'if status\.power == "unknown":'
+replace = 'if False:'

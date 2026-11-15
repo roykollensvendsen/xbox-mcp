@@ -1,0 +1,5 @@
+[[rule]]
+name = "a token is spent only once the command was sent"
+file = "src/xbox_mcp/service.py"
+find = 'return cloud_failure\(error, power=None\)$'
+replace = 'return self.questions.spend(question) or cloud_failure(error, power=None)'

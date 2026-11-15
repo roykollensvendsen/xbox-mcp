@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stop that may have arrived is never sent again"
+file = "src/xbox_mcp/service.py"
+find = 'sent = Sent\(accepted=True\)  # it may have arrived'
+replace = 'raise'

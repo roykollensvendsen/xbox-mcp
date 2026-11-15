@@ -1,0 +1,5 @@
+[[rule]]
+name = "an email address is never committed"
+file = "scripts/private_data_scan.py"
+find = 'found \+= \[f"email address \{m\}" for m in emails\]'
+replace = 'pass'

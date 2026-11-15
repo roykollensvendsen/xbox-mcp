@@ -1,0 +1,5 @@
+[[rule]]
+name = "between 22 and 07 a wake is refused unless the tv is on"
+file = "src/xbox_mcp/service.py"
+find = '^        if on is True:$'
+replace = 'if True:'

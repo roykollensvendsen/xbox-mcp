@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a connection that never opened is said as never sent"
+file = "src/xbox_mcp/drivers/cloud.py"
+find = 'if isinstance\(error, httpx\.ConnectError \| httpx\.ConnectTimeout\):'
+replace = 'if True:'

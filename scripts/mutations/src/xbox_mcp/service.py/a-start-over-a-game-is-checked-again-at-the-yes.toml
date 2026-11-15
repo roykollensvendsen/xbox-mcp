@@ -1,0 +1,5 @@
+[[rule]]
+name = "a start over a game is checked again at the yes"
+file = "src/xbox_mcp/service.py"
+find = 'if status\.focus != question\.over or status\.power != "on":'
+replace = 'if False:'

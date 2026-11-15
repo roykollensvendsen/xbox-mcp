@@ -1,0 +1,5 @@
+[[rule]]
+name = "only an allow-listed library call is ever made"
+file = "src/xbox_mcp/drivers/cloud.py"
+find = 'if path not in ALLOWED:'
+replace = 'if False:'
