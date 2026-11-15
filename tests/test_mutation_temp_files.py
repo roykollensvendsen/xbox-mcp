@@ -65,12 +65,17 @@ def test_removing_a_run_s_files_never_changes_a_folder_it_links_to(tmp_path, mon
 
 def test_a_killed_run_s_temporary_files_are_swept_at_the_next_start(tmp_path, monkeypatch):
     mutate = _mutate(tmp_path, monkeypatch)
+    mutate.MUTATE_TMP.mkdir(mode=0o700)
     left = mutate.MUTATE_TMP / "run-left-by-a-killed-run"
     (left / "shut").mkdir(parents=True)
+    (left / ".in-use").write_text("")  # its lock, which nobody holds any more
     (left / "shut" / "inside.txt").write_text("x")
     (left / "shut").chmod(0)
+    live = mutate.cleanup.HeldFolder("run-", mutate.MUTATE_TMP)
     mutate.sweep()
     assert not left.exists()
+    assert live.path.is_dir()  # a run still going is never swept
+    live.remove()
 
 
 def test_the_temporary_files_live_outside_the_checkout():

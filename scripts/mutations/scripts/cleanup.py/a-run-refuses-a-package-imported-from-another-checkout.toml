@@ -1,0 +1,5 @@
+[[rule]]
+name = "a run refuses a package imported from another checkout"
+file = "scripts/cleanup.py"
+find = 'if not found or not pathlib\.Path\(found\)\.resolve\(\)\.is_relative_to\(source\):'
+replace = 'if False:'
