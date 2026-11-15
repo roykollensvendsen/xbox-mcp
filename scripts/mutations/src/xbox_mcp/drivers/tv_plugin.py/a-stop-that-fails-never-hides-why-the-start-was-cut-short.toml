@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stop that fails never hides why the start was cut short"
+file = "src/xbox_mcp/drivers/tv_plugin.py"
+find = 'with contextlib\.suppress\(Exception\):'
+replace = 'with contextlib.nullcontext():'

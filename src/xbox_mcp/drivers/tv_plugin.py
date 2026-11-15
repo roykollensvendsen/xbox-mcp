@@ -8,6 +8,7 @@ ADR-XB-003, as mister-mcp's ADR-MM-002 does it. Only the calls that
 
 from __future__ import annotations
 
+import contextlib
 import json
 import pathlib
 import shutil
@@ -44,8 +45,10 @@ class TvPlugin(TvSwitch):
             self._session = await self._stack.enter_async_context(ClientSession(read, write))
             await self._session.initialize()
         except BaseException:
-            # RULE: a TV plugin whose start is cut short is still stopped
-            await self.__aexit__()
+            # RULE: a stop that fails never hides why the start was cut short
+            with contextlib.suppress(Exception):
+                # RULE: a TV plugin whose start is cut short is still stopped
+                await self.__aexit__()
             raise
         return self
 
@@ -58,6 +61,8 @@ class TvPlugin(TvSwitch):
         """Close the session and stop the TV plugin, after every use."""
         stack, self._stack, self._session = self._stack, None, None
         if stack is not None:
+            # Not wrapped in a shield of our own: the session's cancel scopes would then end
+            # inside one they did not start, which anyio refuses. The library shields its stop.
             await stack.aclose()
 
     async def _offered(self) -> set[str]:
