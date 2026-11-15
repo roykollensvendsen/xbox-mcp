@@ -33,7 +33,6 @@ import ast
 import json
 import os
 import re
-import signal
 import subprocess
 import sys
 import tempfile
@@ -41,12 +40,16 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import cleanup
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 # The tree to measure: this one, or a copy of the base named by RATCHET_ROOT (see measure_at).
 ROOT = Path(os.environ.get("RATCHET_ROOT") or Path(__file__).resolve().parent.parent)
 FILE = ROOT / "quality.json"
+#: A run's own folders in the temporary area: one for each measure, one for the base's copy.
+RUN_PREFIX = "xbox-mcp-ratchet-"
 SOURCE = ROOT / "src"
 PACKAGE = SOURCE / "xbox_mcp"
 COVERAGE_WOBBLE = 0.5  # percentage points: coverage differs slightly between machines and versions
@@ -300,7 +303,8 @@ def _run(
 
 def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = None) -> dict[str, Any]:
     """Every measure, from the tree as it is."""
-    with tempfile.TemporaryDirectory() as tmp:
+    cleanup.from_this_checkout(ROOT, ["uv", "run", "python"])
+    with cleanup.HeldFolder(RUN_PREFIX) as tmp:
         report = Path(tmp) / "coverage.json"
         started = time.monotonic()
         # RULE: the ratchet's test run keeps its files in its own folder
@@ -431,7 +435,7 @@ def measure_at(ref: str) -> dict[str, Any]:
     The copy keeps its own tests and scripts unchanged: this ratchet runs from where it is
     and is pointed at the copy, so the base is measured exactly as it stands.
     """
-    with tempfile.TemporaryDirectory() as tmp:
+    with cleanup.HeldFolder(RUN_PREFIX) as tmp:
         copy, out = Path(tmp) / "base", Path(tmp) / "levels.json"
         added = _run("git", "worktree", "add", "--detach", str(copy), ref)
         if added.returncode:
@@ -453,28 +457,6 @@ def measure_at(ref: str) -> dict[str, Any]:
             _run("git", "worktree", "remove", "--force", str(copy))
 
 
-#: The signals that stop a run from outside: Ctrl-C, a cancelled CI job, and a closed terminal.
-STOPS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
-
-
-def _stopped(signum: int, _frame: object) -> None:
-    """End the run as an error would, so the temporary folders and the base's checkout are removed."""
-    # Once stopping, a second stop would cut the cleanup short, so every further stop is ignored.
-    # RULE: a second stop cannot cut a ratchet's cleanup short
-    for each in STOPS:
-        signal.signal(each, signal.SIG_IGN)
-    if signum == signal.SIGINT:
-        raise KeyboardInterrupt
-    raise SystemExit(128 + signum)
-
-
-def stop_cleanly() -> None:
-    """Make a stop from outside end the run through its ``finally`` blocks, not on the spot."""
-    # RULE: a stopped ratchet cleans up its temporary files
-    for each in STOPS:
-        signal.signal(each, _stopped)
-
-
 def main() -> int:
     """Measure, or measure and compare with the base."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
@@ -484,7 +466,8 @@ def main() -> int:
     parser.add_argument("--out", type=Path, help="where to write the levels measured now")
     parser.add_argument("--skip-mutation", action="store_true")
     args = parser.parse_args()
-    stop_cleanly()
+    cleanup.stop_cleanly()
+    cleanup.sweep(Path(tempfile.gettempdir()), RUN_PREFIX)
     if args.action == "measure":
         now = measure()
         if args.out:

@@ -1,5 +1,0 @@
-[[rule]]
-name = "a stopped ratchet cleans up its temporary files"
-file = "scripts/ratchet.py"
-find = 'signal\.signal\(each, _stopped\)'
-replace = 'pass'

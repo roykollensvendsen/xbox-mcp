@@ -1,0 +1,5 @@
+[[rule]]
+name = "a held folder a killed run left is removed by the next sweep"
+file = "scripts/cleanup.py"
+find = 'if left_behind\(path\):'
+replace = 'if False:'

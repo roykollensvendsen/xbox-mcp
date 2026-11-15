@@ -1,0 +1,5 @@
+[[rule]]
+name = "a second stop cannot cut a run's cleanup short"
+file = "scripts/cleanup.py"
+find = 'signal\.signal\(each, signal\.SIG_IGN\)'
+replace = 'pass'
