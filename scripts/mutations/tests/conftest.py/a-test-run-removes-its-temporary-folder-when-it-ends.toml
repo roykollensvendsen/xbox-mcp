@@ -1,0 +1,5 @@
+[[rule]]
+name = "a test run removes its temporary folder when it ends"
+file = "tests/conftest.py"
+find = 'held\.remove\(\)'
+replace = 'pass'
