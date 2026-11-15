@@ -173,7 +173,11 @@ def run_suite() -> tuple[int, list[str]]:
     # the wrong rule, so no bytecode is written at all.
     # RULE: two mutations never share a bytecode cache
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    held = cleanup.HeldFolder("run-", cleanup.ours(MUTATE_TMP))
+    try:
+        held = cleanup.HeldFolder("run-", cleanup.ours(MUTATE_TMP))
+    except FileNotFoundError:
+        # Another run's end removed the shared folder, empty, between the check and the make.
+        held = cleanup.HeldFolder("run-", cleanup.ours(MUTATE_TMP))
     try:
         r = subprocess.run(  # noqa: S603  -- every argument is this script's own
             [

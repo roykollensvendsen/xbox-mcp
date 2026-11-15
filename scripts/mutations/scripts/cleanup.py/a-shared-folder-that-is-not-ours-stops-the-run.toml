@@ -1,5 +1,5 @@
 [[rule]]
 name = "a shared folder that is not ours stops the run"
 file = "scripts/cleanup.py"
-find = 'elif info\.st_mode & 0o077:'
-replace = 'elif False:'
+find = 'if info\.st_uid != os\.getuid\(\):'
+replace = 'if False:'
