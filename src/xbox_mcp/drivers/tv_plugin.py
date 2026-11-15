@@ -39,9 +39,14 @@ class TvPlugin(TvSwitch):
         program = shutil.which(self._command[0]) or shutil.which(self._command[0], path=self._local_bin)
         params = StdioServerParameters(command=program or self._command[0], args=self._command[1:])
         self._stack = AsyncExitStack()
-        read, write = await self._stack.enter_async_context(stdio_client(params))
-        self._session = await self._stack.enter_async_context(ClientSession(read, write))
-        await self._session.initialize()
+        try:
+            read, write = await self._stack.enter_async_context(stdio_client(params))
+            self._session = await self._stack.enter_async_context(ClientSession(read, write))
+            await self._session.initialize()
+        except BaseException:
+            # RULE: a TV plugin whose start is cut short is still stopped
+            await self.__aexit__()
+            raise
         return self
 
     @property
@@ -51,9 +56,9 @@ class TvPlugin(TvSwitch):
 
     async def __aexit__(self, *_: object) -> None:
         """Close the session and stop the TV plugin, after every use."""
-        if self._stack is not None:
-            await self._stack.aclose()
-        self._stack = self._session = None
+        stack, self._stack, self._session = self._stack, None, None
+        if stack is not None:
+            await stack.aclose()
 
     async def _offered(self) -> set[str]:
         listed = await self._session.list_tools()

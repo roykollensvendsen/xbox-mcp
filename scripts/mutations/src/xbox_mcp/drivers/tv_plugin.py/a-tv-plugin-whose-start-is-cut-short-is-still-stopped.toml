@@ -1,0 +1,5 @@
+[[rule]]
+name = "a TV plugin whose start is cut short is still stopped"
+file = "src/xbox_mcp/drivers/tv_plugin.py"
+find = 'await self\.__aexit__\(\)'
+replace = 'pass'
