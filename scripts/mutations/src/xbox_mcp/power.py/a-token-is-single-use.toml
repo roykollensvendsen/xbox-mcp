@@ -1,0 +1,5 @@
+[[rule]]
+name = "a token is single-use"
+file = "src/xbox_mcp/power.py"
+find = '^        if self\._open == question:$'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a token file others can read is refused"
+file = "src/xbox_mcp/drivers/cloud.py"
+find = 'if path\.stat\(\)\.st_mode & \(stat\.S_IRWXG \| stat\.S_IRWXO\):'
+replace = 'if False:'

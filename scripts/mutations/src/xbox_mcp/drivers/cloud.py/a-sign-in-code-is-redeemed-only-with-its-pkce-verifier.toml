@@ -1,0 +1,5 @@
+[[rule]]
+name = "a sign-in code is redeemed only with its pkce verifier"
+file = "src/xbox_mcp/drivers/cloud.py"
+find = '"code_verifier": self\.verifier,'
+replace = ''

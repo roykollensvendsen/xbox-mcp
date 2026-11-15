@@ -1,0 +1,5 @@
+[[rule]]
+name = "every simulated answer says simulated first"
+file = "src/xbox_mcp/server.py"
+find = 'if self\._simulated:'
+replace = 'if False:'

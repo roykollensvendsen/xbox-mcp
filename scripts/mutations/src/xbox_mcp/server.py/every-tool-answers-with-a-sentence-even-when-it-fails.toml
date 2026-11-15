@@ -1,0 +1,5 @@
+[[rule]]
+name = "every tool answers with a sentence, even when it fails"
+file = "src/xbox_mcp/server.py"
+find = 'answer = \{"success": False, "outcome": "refused", "say": BROKE\}'
+replace = 'raise'

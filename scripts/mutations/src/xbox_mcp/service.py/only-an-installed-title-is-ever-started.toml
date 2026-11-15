@@ -1,0 +1,5 @@
+[[rule]]
+name = "only an installed title is ever started"
+file = "src/xbox_mcp/service.py"
+find = '^        if not installed:$'
+replace = 'if False:'

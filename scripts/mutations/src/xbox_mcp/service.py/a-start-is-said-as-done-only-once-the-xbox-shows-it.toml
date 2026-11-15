@@ -1,0 +1,5 @@
+[[rule]]
+name = "a start is said as done only once the xbox shows it"
+file = "src/xbox_mcp/service.py"
+find = 'if not await self\._shows\(console_id, app\):'
+replace = 'if False:'

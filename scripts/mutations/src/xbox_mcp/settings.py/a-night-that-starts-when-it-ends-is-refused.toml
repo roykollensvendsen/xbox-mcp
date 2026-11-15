@@ -1,0 +1,5 @@
+[[rule]]
+name = "a night that starts when it ends is refused"
+file = "src/xbox_mcp/settings.py"
+find = 'if starts == ends:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a token answers only the question it was asked for"
+file = "src/xbox_mcp/power.py"
+find = 'if question\.action not in kinds:'
+replace = 'if False:'

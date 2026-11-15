@@ -1,0 +1,5 @@
+[[rule]]
+name = "a token older than thirty seconds is refused"
+file = "src/xbox_mcp/power.py"
+find = 'if self\._clock\(\) - question\.asked_at > CONFIRM_WITHIN:'
+replace = 'if False:'
