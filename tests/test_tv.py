@@ -5,6 +5,8 @@ import asyncio
 import json
 import pathlib
 import sys
+import threading
+import time
 
 import pytest
 
@@ -52,6 +54,49 @@ def test_the_tv_plugin_is_closed_after_each_use(tmp_path):
     plugin, _ = _plugin(tmp_path, "on")
     asyncio.run(show_xbox(plugin, settle=0.0))
     assert not plugin.is_open
+
+
+def _within(seconds, coroutine):
+    """Run `coroutine`, failing in plain words if it is still running after `seconds`."""
+    answer = {}
+    runner = threading.Thread(target=lambda: answer.update(it=asyncio.run(coroutine)), daemon=True)
+    runner.start()
+    runner.join(seconds)
+    if runner.is_alive():
+        pytest.fail(f"The TV step hung: it was still running {seconds} s after its time limit ran out")
+    return answer["it"]
+
+
+def _running_with(marker, within=10.0):
+    """The processes, other than zombies, still running with `marker` in their command after `within` s."""
+    deadline = time.monotonic() + within
+    while True:
+        found = []
+        for proc in pathlib.Path("/proc").glob("[0-9]*"):
+            try:
+                if marker in proc.joinpath("cmdline").read_text() and "State:\tZ" not in (
+                    proc.joinpath("status").read_text()
+                ):
+                    found.append(proc.name)
+            except OSError:
+                continue
+        if not found or time.monotonic() >= deadline:
+            return found
+        time.sleep(0.05)
+
+
+def test_a_tv_plugin_whose_start_is_cut_short_is_still_stopped(tmp_path, monkeypatch):
+    """The TV's time runs out while its plugin is still starting, as on a busy machine."""
+    monkeypatch.setattr(tv, "TV_WITHIN", 0.5)
+    log = tmp_path / "calls.log"
+    log.touch()
+    command = [sys.executable, str(FAKE), "on", str(log), "60", str(tmp_path / "pid")]
+    plugin = TvPlugin(command=command, tv="the den", device="Xbox")
+    answer = _within(30, show_xbox(plugin, settle=0.0))
+    assert answer["outcome"] == "working", answer
+    assert not plugin.is_open
+    left = _running_with(str(log))
+    assert not left, f"the TV plugin was left running after its start was cut short: {left}"
 
 
 def test_a_tv_plugin_that_cannot_start_is_said_not_raised(tmp_path):
