@@ -1,0 +1,5 @@
+[[rule]]
+name = "the ratchet's test run keeps its files in its own folder"
+file = "scripts/ratchet.py"
+find = 'basetemp = f"--basetemp=\{Path\(tmp\) / .pytest.\}"'
+replace = 'basetemp = "-q"'

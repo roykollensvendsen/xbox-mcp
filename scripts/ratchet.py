@@ -33,6 +33,7 @@ import ast
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -302,9 +303,10 @@ def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = No
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "coverage.json"
         started = time.monotonic()
-        suite = _run(
-            "uv", "run", "pytest", "-q", "-p", "no:cacheprovider", "--cov", f"--cov-report=json:{report}"
-        )
+        # RULE: the ratchet's test run keeps its files in its own folder
+        basetemp = f"--basetemp={Path(tmp) / 'pytest'}"
+        covered = f"--cov-report=json:{report}"
+        suite = _run("uv", "run", "pytest", "-q", "-p", "no:cacheprovider", basetemp, "--cov", covered)
         seconds = round(time.monotonic() - started, 1)
         if suite.returncode:
             raise SystemExit("The suite fails; the ratchet measures a green tree.\n" + suite.stdout[-2000:])
@@ -451,6 +453,28 @@ def measure_at(ref: str) -> dict[str, Any]:
             _run("git", "worktree", "remove", "--force", str(copy))
 
 
+#: The signals that stop a run from outside: Ctrl-C, a cancelled CI job, and a closed terminal.
+STOPS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+
+
+def _stopped(signum: int, _frame: object) -> None:
+    """End the run as an error would, so the temporary folders and the base's checkout are removed."""
+    # Once stopping, a second stop would cut the cleanup short, so every further stop is ignored.
+    # RULE: a second stop cannot cut a ratchet's cleanup short
+    for each in STOPS:
+        signal.signal(each, signal.SIG_IGN)
+    if signum == signal.SIGINT:
+        raise KeyboardInterrupt
+    raise SystemExit(128 + signum)
+
+
+def stop_cleanly() -> None:
+    """Make a stop from outside end the run through its ``finally`` blocks, not on the spot."""
+    # RULE: a stopped ratchet cleans up its temporary files
+    for each in STOPS:
+        signal.signal(each, _stopped)
+
+
 def main() -> int:
     """Measure, or measure and compare with the base."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
@@ -460,6 +484,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, help="where to write the levels measured now")
     parser.add_argument("--skip-mutation", action="store_true")
     args = parser.parse_args()
+    stop_cleanly()
     if args.action == "measure":
         now = measure()
         if args.out:

@@ -27,6 +27,7 @@ import os
 import pathlib
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -242,7 +243,7 @@ def run_suite() -> tuple[int, list[str]]:
     return int(m.group(1)) if m else 0, [f.split("::")[-1].split("[")[0] for f in failed]
 
 
-def main() -> int:
+def mutate_all() -> int:
     """Mutate every rule in turn, restore the tree, and report."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", type=pathlib.Path, help="write the evidence table here")
@@ -347,6 +348,38 @@ though something went red. A new rule follows the order in `CONTRIBUTING.md`
 instead, a failing test first, and gets a row of its own under `scripts/mutations/`,
 which `tests/test_rules_have_evidence.py` requires.
 """
+
+
+#: The signals that stop a run from outside: Ctrl-C, a cancelled CI job, and a closed terminal.
+STOPS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+
+
+def _stopped(signum: int, _frame: object) -> None:
+    """End the run as an error would, so every ``finally`` runs: the file is restored, the files removed."""
+    # Once stopping, a second stop would cut the cleanup short, so every further stop is ignored.
+    # RULE: a second stop cannot cut a mutation run's cleanup short
+    for each in STOPS:
+        signal.signal(each, signal.SIG_IGN)
+    if signum == signal.SIGINT:
+        raise KeyboardInterrupt
+    raise SystemExit(128 + signum)
+
+
+def stop_cleanly() -> None:
+    """Make a stop from outside end the run through its ``finally`` blocks, not on the spot."""
+    # RULE: a stopped mutation run cleans up after itself
+    for each in STOPS:
+        signal.signal(each, _stopped)
+
+
+def main() -> int:
+    """Mutate every rule in turn, and leave the temporary folder as it was found."""
+    stop_cleanly()
+    try:
+        return mutate_all()
+    finally:
+        # RULE: a mutation run leaves nothing in the temporary folder
+        _remove(MUTATE_TMP)
 
 
 if __name__ == "__main__":

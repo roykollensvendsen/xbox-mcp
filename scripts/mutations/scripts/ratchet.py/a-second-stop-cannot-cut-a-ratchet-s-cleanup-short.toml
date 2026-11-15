@@ -1,0 +1,5 @@
+[[rule]]
+name = "a second stop cannot cut a ratchet's cleanup short"
+file = "scripts/ratchet.py"
+find = 'signal\.signal\(each, signal\.SIG_IGN\)'
+replace = 'pass'
