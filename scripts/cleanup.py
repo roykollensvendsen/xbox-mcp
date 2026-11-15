@@ -86,8 +86,10 @@ def left_behind(path: pathlib.Path) -> bool:
         found = path.lstat()
     except FileNotFoundError:
         return False  # another sweep removed it first
-    if not stat.S_ISDIR(found.st_mode) or found.st_uid != os.getuid():
-        return False  # a link is never followed, and another user's folder never touched
+    # RULE: a sweep never touches another user's folder
+    theirs = found.st_uid != os.getuid()
+    if theirs or not stat.S_ISDIR(found.st_mode):
+        return False  # another user's folder is never touched, and a link never followed
     try:
         # Opened only if it is there: a sweep never makes a lock in someone else's folder.
         lock = os.open(path / LOCK, os.O_RDONLY | os.O_NOFOLLOW)
@@ -135,15 +137,21 @@ def ours(folder: pathlib.Path) -> pathlib.Path:
     else:
         try:
             info = os.fstat(opened)
+            # RULE: a shared folder that is not ours stops the run
+            if info.st_uid != os.getuid():
+                found = f"belongs to user {info.st_uid}"
+            # RULE: a shared folder others can write to stops the run
+            elif info.st_mode & 0o022:
+                found = (
+                    f"can be written to by others (mode {stat.S_IMODE(info.st_mode):o}), who may already have"
+                )
+            else:
+                if info.st_mode & 0o077:
+                    # RULE: a shared folder others may only read is closed to them
+                    os.fchmod(opened, 0o700)
+                return folder
         finally:
             os.close(opened)
-        if info.st_uid != os.getuid():
-            found = "belongs to another user"
-        # RULE: a shared folder that is not ours stops the run
-        elif info.st_mode & 0o077:
-            found = f"can be read or entered by others (mode {stat.S_IMODE(info.st_mode):o})"
-        else:
-            return folder
     msg = (
         f"{folder} {found}, so this run will not keep its files there. Check what it is, and if "
         f"nothing needs it, remove it (rm -r {folder}) and start the run again."
@@ -203,15 +211,22 @@ def from_this_checkout(root: pathlib.Path, python: list[str]) -> None:
     then measures the other's, and every rule fails at once. The check runs in a
     separate process, with the same interpreter and environment the measuring will
     use, because that is where the package is imported from. A checkout with no
-    package under ``src/`` has nothing to mix up.
+    package under ``src/`` is refused too: the run would measure nothing of its own.
     """
     packages = sorted(p.parent.name for p in (root / "src").glob("*/__init__.py"))
     if not packages:
-        return
+        empty = (
+            f"There is no package in {root / 'src'} to check, so this run would measure nothing of its own."
+            " Run it from the plugin's checkout, where src/xbox_mcp/ is."
+        )
+        # RULE: a run refuses a checkout with no package
+        raise SystemExit(empty)
     package = packages[0]
     asked = subprocess.run(  # noqa: S603 - every argument is this script's own
         [*python, "-c", f"import {package}; print({package}.__file__)"],
         cwd=root,
+        # No bytecode: a cached copy of the code as it is now would hide the changes made next.
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
         capture_output=True,
         text=True,
         check=False,

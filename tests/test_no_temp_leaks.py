@@ -29,7 +29,7 @@ RULED = """def one():
 """
 ROW = """[[rule]]
 name = "one is one"
-file = "src/ruled.py"
+file = "src/ruled/__init__.py"
 find = 'return 1'
 replace = 'return 2'
 """
@@ -38,13 +38,13 @@ replace = 'return 2'
 def _project(tmp_path, test_body):
     """A tiny repository with one rule, its row, its test, and a copy of the mutation tool."""
     project = tmp_path / "project"
-    (project / "scripts" / "mutations" / "src" / "ruled.py").mkdir(parents=True)
-    (project / "src").mkdir()
+    (project / "scripts" / "mutations" / "src" / "ruled" / "__init__.py").mkdir(parents=True)
+    (project / "src" / "ruled").mkdir(parents=True)
     (project / "tests").mkdir()
     for script in ("mutate.py", "cleanup.py"):
         (project / "scripts" / script).write_text((ROOT / "scripts" / script).read_text())
-    (project / "scripts" / "mutations" / "src" / "ruled.py" / "one-is-one.toml").write_text(ROW)
-    (project / "src" / "ruled.py").write_text(RULED)
+    (project / "scripts" / "mutations" / "src" / "ruled" / "__init__.py" / "one-is-one.toml").write_text(ROW)
+    (project / "src" / "ruled" / "__init__.py").write_text(RULED)
     (project / "tests" / "test_ruled.py").write_text(
         "import sys, time\nsys.path.insert(0, 'src')\nfrom ruled import one\n\n"
         f"def test_one_is_one():\n{test_body}    assert one() == 1\n"
@@ -74,12 +74,14 @@ shutil.rmtree = _slow
 def _temporary(tmp_path, slowed=""):
     folder = tmp_path / "tmp"
     folder.mkdir()
-    env = {**os.environ, "TMPDIR": str(folder)}
+    # The tiny project's package is found from its own src, as an installed checkout's is.
+    env = {**os.environ, "TMPDIR": str(folder), "PYTHONPATH": str(tmp_path / "project" / "src")}
     if slowed:
         hooks = tmp_path / "hooks"
         hooks.mkdir()
         (hooks / "sitecustomize.py").write_text(SLOW_CLEANUP)
-        env |= {"PYTHONPATH": str(hooks), "SLOWED": slowed, "CLEANUP_STARTED": str(tmp_path / "started")}
+        paths = f"{hooks}{os.pathsep}{env['PYTHONPATH']}"
+        env |= {"PYTHONPATH": paths, "SLOWED": slowed, "CLEANUP_STARTED": str(tmp_path / "started")}
     return folder, env
 
 
@@ -202,7 +204,7 @@ def test_a_stopped_run_cleans_up_after_itself(tmp_path, script, stop):
     _stop_once(process, under_way, stop)
     assert _left_in(folder) == []
     if project:
-        assert (project / "src" / "ruled.py").read_text() == RULED
+        assert (project / "src" / "ruled" / "__init__.py").read_text() == RULED
 
 
 @pytest.mark.parametrize("script", SCRIPTS)
@@ -211,7 +213,7 @@ def test_a_second_stop_cannot_cut_a_run_s_cleanup_short(tmp_path, script):
     _stop_twice(process, under_way, tmp_path / "started")
     assert _left_in(folder) == []
     if project:
-        assert (project / "src" / "ruled.py").read_text() == RULED
+        assert (project / "src" / "ruled" / "__init__.py").read_text() == RULED
 
 
 TEST_RUN = """

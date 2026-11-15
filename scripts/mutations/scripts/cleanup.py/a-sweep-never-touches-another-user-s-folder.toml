@@ -1,0 +1,5 @@
+[[rule]]
+name = "a sweep never touches another user's folder"
+file = "scripts/cleanup.py"
+find = 'theirs = found\.st_uid != os\.getuid\(\)'
+replace = 'theirs = False'

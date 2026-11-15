@@ -1,0 +1,5 @@
+[[rule]]
+name = "a run refuses a checkout with no package"
+file = "scripts/cleanup.py"
+find = 'raise SystemExit\(empty\)'
+replace = 'return'

@@ -64,19 +64,50 @@ def test_a_sweep_never_follows_a_link(tmp_path):
     assert (outside / "work.txt").exists()
 
 
-def test_a_shared_folder_that_is_not_ours_stops_the_run(tmp_path):
+def _another_user(monkeypatch):
+    """Make every folder this user owns look like another user's, as a second account would see it."""
+    real = os.getuid()
+    monkeypatch.setattr(cleanup.os, "getuid", lambda: real + 1)
+
+
+def test_a_shared_folder_that_is_not_ours_stops_the_run(tmp_path, monkeypatch):
     made = cleanup.ours(tmp_path / "fresh")
     assert made.is_dir()
     assert made.stat().st_mode & 0o777 == 0o700
-    shared = tmp_path / "shared"
-    shared.mkdir()
-    shared.chmod(0o755)
-    with pytest.raises(SystemExit, match="read or entered by others") as refused:
-        cleanup.ours(shared)
-    assert f"rm -r {shared}" in str(refused.value)
     (tmp_path / "link").symlink_to(made)
     with pytest.raises(SystemExit, match="cannot be opened as a folder"):
         cleanup.ours(tmp_path / "link")
+    _another_user(monkeypatch)
+    with pytest.raises(SystemExit, match="belongs to user") as refused:
+        cleanup.ours(made)
+    assert f"rm -r {made}" in str(refused.value)
+
+
+@pytest.mark.parametrize("mode", [0o775, 0o757, 0o777])
+def test_a_shared_folder_others_can_write_to_stops_the_run(tmp_path, mode):
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(mode)
+    with pytest.raises(SystemExit, match="written to by others") as refused:
+        cleanup.ours(shared)
+    assert f"rm -r {shared}" in str(refused.value)
+
+
+@pytest.mark.parametrize("mode", [0o755, 0o750, 0o705])
+def test_a_shared_folder_others_may_only_read_is_closed_to_them(tmp_path, mode):
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(mode)
+    assert cleanup.ours(shared) == shared
+    assert shared.stat().st_mode & 0o777 == 0o700
+
+
+def test_a_sweep_never_touches_another_user_s_folder(tmp_path, monkeypatch):
+    left = _left_by_a_killed_run(tmp_path, "run-other")
+    _another_user(monkeypatch)
+    assert not cleanup.left_behind(left)
+    assert cleanup.sweep(tmp_path, "run-") == []
+    assert (left / "work.txt").exists()
 
 
 def test_a_run_refuses_a_package_imported_from_another_checkout(tmp_path, monkeypatch):
@@ -92,9 +123,11 @@ def test_a_run_refuses_a_package_imported_from_another_checkout(tmp_path, monkey
     assert str(ROOT.resolve() / "src") in said
 
 
-def test_a_checkout_with_no_package_has_nothing_to_check(tmp_path):
+def test_a_run_refuses_a_checkout_with_no_package(tmp_path):
     (tmp_path / "src").mkdir()
-    cleanup.from_this_checkout(tmp_path, [sys.executable, "-c", "raise SystemExit(1)"])
+    with pytest.raises(SystemExit, match="no package") as refused:
+        cleanup.from_this_checkout(tmp_path, [sys.executable])
+    assert str(tmp_path / "src") in str(refused.value)
 
 
 def test_a_held_folder_s_lock_is_taken_before_its_name_stands(tmp_path):
