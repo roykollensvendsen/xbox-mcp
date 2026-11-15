@@ -31,6 +31,8 @@ from xbox_mcp.settings import Settings
 
 MINECRAFT = APP["aumid"]
 COMMANDS = ("wake_up", "turn_off", "go_home")
+#: The hour of day the service is told it is; a wake needs a TV at night, so these run at noon.
+NOON, MIDNIGHT = 12, 0
 
 
 class Microsoft:
@@ -83,8 +85,9 @@ async def _no_wait(_seconds):
     return None
 
 
-def _service(microsoft):
-    return XboxService(CloudConsole(client=microsoft), Settings(titles=("Minecraft",)), wait=_no_wait)
+def _service(microsoft, *, hour=NOON):
+    settings = Settings(titles=("Minecraft",))
+    return XboxService(CloudConsole(client=microsoft), settings, hour=lambda: hour, wait=_no_wait)
 
 
 LOST = [
@@ -143,6 +146,15 @@ def test_a_wake_that_never_reached_microsoft_can_be_confirmed_again():
     assert first["outcome"] == "unreachable", first
     assert microsoft.sent == ["wake_up"]
     assert second["outcome"] == "not_confirmed", second  # sent once; the stand-in never wakes
+
+
+def test_at_night_a_wake_is_refused_before_anything_is_sent():
+    """The tests above run at noon; at night with no TV set, a wake is refused and nothing leaves."""
+    microsoft = Microsoft("ConnectedStandby", failure=httpx.ReadTimeout("no answer"))
+    refused = asyncio.run(_service(microsoft, hour=MIDNIGHT).power_request("wake"))
+    assert refused["outcome"] == "refused", refused
+    assert "night" in refused["say"].lower()
+    assert microsoft.sent == []
 
 
 @pytest.mark.parametrize(
