@@ -1,0 +1,6 @@
+[[rule]]
+name = "a run that starts as another ends still gets its folder"
+file = "scripts/cleanup.py"
+find = '^        return HeldFolder\(prefix, ours\(place\)\)$'
+occurrence = 2
+replace = 'raise'

@@ -151,3 +151,19 @@ def test_a_second_run_in_the_same_checkout_stops_at_once(tmp_path):
     finally:
         os.close(first)
     os.close(cleanup.only_run(tmp_path, "A mutation run"))  # free again once the first has ended
+
+
+def test_a_run_that_starts_as_another_ends_still_gets_its_folder(tmp_path, monkeypatch):
+    real, calls = cleanup.HeldFolder, []
+
+    def removed_once(prefix, place):
+        calls.append(place)
+        if len(calls) == 1:  # another run's end removed the empty shared folder just now
+            raise FileNotFoundError(place)
+        return real(prefix, place)
+
+    monkeypatch.setattr(cleanup, "HeldFolder", removed_once)
+    held = cleanup.held_in(tmp_path / "shared", "run-")
+    assert held.path.parent == tmp_path / "shared"
+    assert len(calls) == 2
+    held.remove()

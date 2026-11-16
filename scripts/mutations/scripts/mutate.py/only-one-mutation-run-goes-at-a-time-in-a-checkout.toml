@@ -1,0 +1,5 @@
+[[rule]]
+name = "only one mutation run goes at a time in a checkout"
+file = "scripts/mutate.py"
+find = 'checkout = cleanup\.only_run\(RECOVERY\.parent, "A mutation run"\)'
+replace = 'checkout = os.open(RECOVERY.parent, os.O_RDONLY)'

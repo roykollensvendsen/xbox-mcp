@@ -179,11 +179,7 @@ def run_suite() -> tuple[int, list[str]]:
     # the wrong rule, so no bytecode is written at all.
     # RULE: two mutations never share a bytecode cache
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    try:
-        held = cleanup.HeldFolder("run-", cleanup.ours(MUTATE_TMP))
-    except FileNotFoundError:
-        # Another run's end removed the shared folder, empty, between the check and the make.
-        held = cleanup.HeldFolder("run-", cleanup.ours(MUTATE_TMP))
+    held = cleanup.held_in(MUTATE_TMP, "run-")
     try:
         r = subprocess.run(  # noqa: S603  -- every argument is this script's own
             [
@@ -220,7 +216,7 @@ def mutate_all(write: pathlib.Path | None = None) -> int:
     recover()
     # RULE: an empty rule table is not a crash
     # A scaffolded repository starts with a table of comments and no rows.
-    rules = all_rows()
+    rules = all_rows(ROWS)
     if not rules:
         print(f"no rules in {ROWS.relative_to(ROOT)} yet; add one file per rule the code enforces")  # noqa: T201
         return 0

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a mutation run leaves nothing in the temporary folder"
+file = "scripts/mutate.py"
+find = 'MUTATE_TMP\.rmdir\(\)'
+replace = 'pass'

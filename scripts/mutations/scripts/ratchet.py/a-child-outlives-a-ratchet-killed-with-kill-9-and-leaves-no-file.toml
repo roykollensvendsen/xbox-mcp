@@ -1,0 +1,5 @@
+[[rule]]
+name = "a child outlives a ratchet killed with kill -9 and leaves no file"
+file = "scripts/ratchet.py"
+find = 'writes_to: dict\[str, Any\] = \{"stdout": out, "stderr": err\}'
+replace = 'writes_to: dict[str, Any] = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE}'

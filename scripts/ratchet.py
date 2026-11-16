@@ -317,9 +317,11 @@ def _run(
     could put anything back; a file goes only with the last process holding it.
     """
     with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as err:
+        # RULE: a child outlives a ratchet killed with kill -9 and leaves no file
+        writes_to: dict[str, Any] = {"stdout": out, "stderr": err}
         # RULE: the ratchet's child hears a terminal's Ctrl-C only through the ratchet
         step = subprocess.Popen(  # noqa: S603 - every argument is this script's own
-            command, cwd=cwd, env=env, stdout=out, stderr=err, text=True, start_new_session=True
+            command, cwd=cwd, env=env, text=True, start_new_session=True, **writes_to
         )
         try:
             step.wait()
