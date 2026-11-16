@@ -160,7 +160,7 @@ def restore(path: pathlib.Path, original: str, mutated: str) -> bool:
         # Restoring now would overwrite an edit made while this was running,
         # which is a silent way to lose somebody's work.
         # RULE: a file changed during the run is never restored over
-        return False
+        return False  # the edit stays, and the caller names the file
     path.write_text(original)
     return True
 
@@ -211,15 +211,42 @@ def run_suite() -> tuple[int, list[str]]:
     return int(m.group(1)) if m else 0, [f.split("::")[-1].split("[")[0] for f in failed]
 
 
+#: A rule's mark in the code: ``# RULE: what it says``.
+MARKER = re.compile(r"^[ \t]*#\s*RULE:\s*(.+?)\s*$")
+
+
+def marked() -> list[str]:
+    """Every rule the code marks, in src/ and in the scripts, by its words."""
+    sources = [*(ROOT / "src").rglob("*.py"), *(p for p in (ROOT / "scripts").glob("*.py") if p.is_file())]
+    lines = [line for source in sorted(sources) for line in source.read_text(encoding="utf-8").splitlines()]
+    return [match.group(1) for line in lines if (match := MARKER.search(line))]
+
+
+def nothing_to_check(rules: list[dict]) -> int | None:
+    """The exit code when there are no rows to run, or None when there are."""
+    # RULE: an empty rule table is not a crash
+    # A scaffolded repository starts with no rules and no rows.
+    if not rules and not marked():
+        print(f"no rules in {ROWS.relative_to(ROOT)} yet; add one file per rule the code enforces")  # noqa: T201
+        return 0
+    # RULE: rules with no rows are a failure not a pass
+    # A check that passes with nothing to check lets every rule go unproven: a rows folder
+    # moved or emptied by mistake would leave the run green.
+    if not rules:
+        print(  # noqa: T201
+            f"nothing to switch off: the code marks rules, but {ROWS.relative_to(ROOT)} has no rows."
+            " Restore it from main (git checkout origin/main -- scripts/mutations), or add a row per rule."
+        )
+        return 1
+    return None
+
+
 def mutate_all(write: pathlib.Path | None = None) -> int:
     """Mutate every rule in turn, restore the tree, and report."""
     recover()
-    # RULE: an empty rule table is not a crash
-    # A scaffolded repository starts with a table of comments and no rows.
     rules = all_rows(ROWS)
-    if not rules:
-        print(f"no rules in {ROWS.relative_to(ROOT)} yet; add one file per rule the code enforces")  # noqa: T201
-        return 0
+    if (empty := nothing_to_check(rules)) is not None:
+        return empty
     results = []
     lost: list[str] = []
     standing: tuple[pathlib.Path, str, str] | None = None

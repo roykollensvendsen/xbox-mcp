@@ -66,3 +66,14 @@ def test_an_empty_rule_table_is_not_a_crash(tmp_path, monkeypatch, capsys):
     (tmp_path / "rows").mkdir()
     assert mutate.mutate_all() == 0
     assert "no rules" in capsys.readouterr().out
+
+
+def test_rules_with_no_rows_are_a_failure_not_a_pass(tmp_path, monkeypatch, capsys):
+    mutate = _mutate(tmp_path, monkeypatch)
+    (tmp_path / "rows").mkdir()  # emptied, or moved, by mistake
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "ruled.py").write_text("def one():\n    # RULE: one is one\n    return 1\n")
+    assert mutate.mutate_all() == 1
+    said = capsys.readouterr().out
+    assert "has no rows" in said
+    assert "git checkout origin/main -- scripts/mutations" in said
