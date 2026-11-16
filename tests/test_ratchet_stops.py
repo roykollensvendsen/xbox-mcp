@@ -7,6 +7,7 @@ its own cleanup short. These tests stand a small script in for the ratchet, runn
 child through the ratchet's own `_run`, and stop it the ways a terminal, CI and kill do.
 """
 
+import contextlib
 import os
 import shutil
 import signal
@@ -27,7 +28,9 @@ import sys
 sys.path.insert(0, sys.argv[1])
 import cleanup, ratchet
 cleanup.stop_cleanly()
-ratchet._run(*sys.argv[3:], "-c", sys.argv[2])
+if sys.argv[2] == "muted":  # as a mutation that switches the stop off leaves it
+    ratchet._tell_to_stop = lambda step: None
+ratchet._run(*sys.argv[4:], "-c", sys.argv[3])
 """
 
 #: How the stand-in starts its child: straight, or through uv, as the ratchet starts its own.
@@ -37,7 +40,7 @@ THROUGH_UV = ("uv", "run", "--no-project", "python")
 #: Stands in for a mutation run: says it is going, and on Ctrl-C puts its line back. Every
 #: Ctrl-C it gets is counted, because a second one would make pytest cut its cleanup short.
 CHILD = """
-import pathlib, signal, sys, time
+import os, pathlib, signal, sys, time
 marks = pathlib.Path(MARKS)
 def put_back(*_):
     with open(marks / "put-back", "a") as told:
@@ -45,22 +48,23 @@ def put_back(*_):
     time.sleep(1)  # room for a second Ctrl-C to arrive and be counted
     sys.exit(130)
 signal.signal(signal.SIGINT, put_back)
-(marks / "going").touch()
+(marks / "going").write_text(f"{os.getpid()} {os.getppid()}")  # this child, and what started it
 time.sleep(120)
 """
 
 
-def _stop_while_child_runs(tmp_path, stop, starts=STRAIGHT):
+def _stop_while_child_runs(tmp_path, stop, starts=STRAIGHT, *, muted=False):
     marks = tmp_path / "marks"
     marks.mkdir()
     child = CHILD.replace("MARKS", repr(str(marks)))
+    mode = "muted" if muted else "-"
     stand_in = subprocess.Popen(
-        [sys.executable, "-c", RATCHET, str(ROOT / "scripts"), child, *starts],
+        [sys.executable, "-c", RATCHET, str(ROOT / "scripts"), mode, child, *starts],
         start_new_session=True,  # a process group of its own, as a terminal gives a command
     )
     try:
         for _ in range(600):
-            if (marks / "going").exists():
+            if (marks / "going").exists() and (marks / "going").read_text():
                 break
             time.sleep(0.05)
         assert (marks / "going").exists(), "the child never started"
@@ -69,7 +73,26 @@ def _stop_while_child_runs(tmp_path, stop, starts=STRAIGHT):
     finally:
         if stand_in.poll() is None:
             os.killpg(stand_in.pid, signal.SIGKILL)
+        _end_what_it_started(marks)
     return code, marks
+
+
+def _end_what_it_started(marks):
+    """End the child and what started it, if either is still running, and wait until both are gone.
+
+    They run in a session of their own, which the stand-in's group kill never reaches. Each is
+    ended by its own pid, never by group, and only while its command still names this test's
+    folder, so a pid the system has since given to another process is left alone.
+    """
+    going = marks / "going"
+    pids = [int(pid) for pid in going.read_text().split()] if going.exists() else []
+    for pid in pids:
+        with contextlib.suppress(OSError):
+            if str(marks) in Path(f"/proc/{pid}/cmdline").read_bytes().decode(errors="replace"):
+                os.kill(pid, signal.SIGKILL)
+    deadline = time.monotonic() + 10
+    while any(_running(pid) for pid in pids) and time.monotonic() < deadline:
+        time.sleep(0.05)
 
 
 def test_a_stopped_ratchet_lets_its_child_clean_up_before_it_ends(tmp_path):
@@ -108,6 +131,39 @@ def test_a_stopped_ratchet_tells_the_python_under_uv_once(tmp_path, stop):
     assert (marks / "put-back").read_text() == "x"  # once, not twice
 
 
+def _running(pid):
+    """Whether process `pid` is still running, rather than ended or only a zombie left to reap."""
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+    except FileNotFoundError:
+        return False
+    return state != "Z"
+
+
+@pytest.mark.skipif(
+    shutil.which("uv") is None and not os.environ.get("CI"),
+    reason="needs uv, which the ratchet starts its runs through (in CI, its absence fails instead)",
+)
+def test_a_muted_stop_leaves_no_child_running_under_uv(tmp_path):
+    """With the stop switched off, as a mutation leaves it, the child never ends by itself.
+
+    It and its uv run in a session of their own, so the test must end them. Left running,
+    the pair holds uv's cache lock for every later run on the machine.
+    """
+    if shutil.which("uv") is None:
+        pytest.fail("CI has no uv, so the proof that a muted stop leaves nothing running cannot run")
+    _, marks = _stop_while_child_runs(
+        tmp_path, lambda p: p.send_signal(signal.SIGTERM), THROUGH_UV, muted=True
+    )
+    assert not (marks / "put-back").exists()  # the stop was muted: the child was never told
+    pids = [int(pid) for pid in (marks / "going").read_text().split()]
+    deadline = time.monotonic() + 10
+    while any(_running(pid) for pid in pids) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    left = [pid for pid in pids if _running(pid)]
+    assert not left, f"the child and its uv were left running: {left}"
+
+
 #: Stands in for a suite the ratchet runs: says it is going, waits until the ratchet is gone,
 #: then writes a lot, as pytest's summary does, and only then marks itself finished.
 OUTLIVES = """
@@ -131,7 +187,7 @@ def test_a_child_outlives_a_ratchet_killed_with_kill_9_and_leaves_no_file(tmp_pa
     marks = tmp_path / "marks"
     marks.mkdir()
     child = OUTLIVES.replace("MARKS", repr(str(marks)))
-    stand_in = subprocess.Popen([sys.executable, "-c", RATCHET, str(ROOT / "scripts"), child, *STRAIGHT])
+    stand_in = subprocess.Popen([sys.executable, "-c", RATCHET, str(ROOT / "scripts"), "-", child, *STRAIGHT])
     pid = None
     try:
         for _ in range(600):
