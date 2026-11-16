@@ -44,6 +44,8 @@ def test_a_file_changed_during_the_run_is_never_restored_over(tmp_path, monkeypa
 
 
 def test_two_mutations_never_share_a_bytecode_cache(tmp_path, monkeypatch):
+    # A mutation run starts every suite with this already set, which would hide its absence here.
+    monkeypatch.delenv("PYTHONDONTWRITEBYTECODE", raising=False)
     mutate = _mutate(tmp_path, monkeypatch)
     started = _suite_answers(mutate, monkeypatch, "1 passed\n")
     mutate.run_suite()
