@@ -9,6 +9,7 @@ run that finishes, after one that is told to stop part way, and after one told
 to stop a second time while it is still cleaning up.
 """
 
+import json
 import os
 import pathlib
 import signal
@@ -248,3 +249,36 @@ def test_a_test_run_removes_its_temporary_folder_when_it_ends(tmp_path):
         str(p.relative_to(folder)) for p in [live.path, live.path / cleanup.LOCK]
     )
     live.remove()
+
+
+def test_only_one_mutation_run_goes_at_a_time_in_a_checkout(tmp_path):
+    project = _project(tmp_path, "")
+    folder, env = _temporary(tmp_path)
+    running = cleanup.only_run(project / "scripts", "A mutation run")  # as a run going now holds it
+    try:
+        command = [sys.executable, "scripts/mutate.py"]
+        done = subprocess.run(command, cwd=project, env=env, capture_output=True, text=True, check=False)
+    finally:
+        os.close(running)
+    assert done.returncode != 0
+    assert "already going" in done.stderr, done.stdout + done.stderr
+    assert "rules" not in done.stdout
+    assert (project / "src" / "ruled" / "__init__.py").read_text() == RULED
+    assert _left_in(folder) == []
+
+
+def test_a_repair_only_run_puts_back_a_mutated_file_and_does_nothing_else(tmp_path):
+    project = _project(tmp_path, "")
+    folder, env = _temporary(tmp_path)
+    source = project / "src" / "ruled" / "__init__.py"
+    mutated = RULED.replace("return 1", "return 2")
+    source.write_text(mutated)
+    recovery = project / "scripts" / ".mutate-recovery.json"
+    recovery.write_text(json.dumps({"file": "src/ruled/__init__.py", "original": RULED, "mutated": mutated}))
+    command = [sys.executable, "scripts/mutate.py", "--repair-only"]
+    done = subprocess.run(command, cwd=project, env=env, capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert source.read_text() == RULED
+    assert not recovery.exists()
+    assert "rules" not in done.stdout  # no rule was switched off
+    assert _left_in(folder) == []

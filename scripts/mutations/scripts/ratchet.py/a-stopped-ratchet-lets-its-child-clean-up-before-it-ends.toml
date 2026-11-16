@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stopped ratchet lets its child clean up before it ends"
+file = "scripts/ratchet.py"
+find = 'step\.send_signal\(signal\.SIGINT\)'
+replace = 'step.kill()'

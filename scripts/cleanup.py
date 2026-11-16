@@ -143,7 +143,8 @@ def ours(folder: pathlib.Path) -> pathlib.Path:
             # RULE: a shared folder others can write to stops the run
             elif info.st_mode & 0o022:
                 found = (
-                    f"can be written to by others (mode {stat.S_IMODE(info.st_mode):o}), who may already have"
+                    f"can be written to by others (mode {stat.S_IMODE(info.st_mode):o}),"
+                    " who may have put files in it"
                 )
             else:
                 if info.st_mode & 0o077:
@@ -202,6 +203,24 @@ def stop_cleanly() -> None:
     # RULE: a stopped run cleans up after itself
     for each in STOPS:
         signal.signal(each, _stopped)
+
+
+def only_run(folder: pathlib.Path, what: str) -> int:
+    """Lock `folder` for the whole run, without waiting; the open folder holding the lock is returned.
+
+    Two mutation runs in one checkout each take the other's switched-off line for the
+    original and leave the source switched off, so a second one stops before it touches
+    anything. The lock goes when the process ends, however it ends.
+    """
+    held = os.open(folder, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        # RULE: a second run in the same checkout stops at once
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(held)
+        msg = f"{what} is already going in {folder.parent}. Wait for it to end, or stop it, and run again."
+        raise SystemExit(msg) from None
+    return held
 
 
 def from_this_checkout(root: pathlib.Path, python: list[str]) -> None:
