@@ -205,6 +205,19 @@ def stop_cleanly() -> None:
         signal.signal(each, _stopped)
 
 
+def held_in(place: pathlib.Path, prefix: str) -> HeldFolder:
+    """A new held folder in `place`, once `place` is checked to be this user's own.
+
+    Another run's end may remove `place`, empty, between the check and the making, so that
+    is tried once more.
+    """
+    try:
+        return HeldFolder(prefix, ours(place))
+    except FileNotFoundError:
+        # RULE: a run that starts as another ends still gets its folder
+        return HeldFolder(prefix, ours(place))
+
+
 def only_run(folder: pathlib.Path, what: str) -> int:
     """Lock `folder` for the whole run, without waiting; the open folder holding the lock is returned.
 

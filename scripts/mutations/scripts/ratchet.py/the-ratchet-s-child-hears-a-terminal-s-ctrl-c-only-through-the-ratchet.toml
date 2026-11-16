@@ -1,5 +1,5 @@
 [[rule]]
 name = "the ratchet's child hears a terminal's Ctrl-C only through the ratchet"
 file = "scripts/ratchet.py"
-find = 'command, cwd=cwd, env=env, stdout=out, stderr=err, text=True, start_new_session=True'
-replace = 'command, cwd=cwd, env=env, stdout=out, stderr=err, text=True, start_new_session=False'
+find = 'command, cwd=cwd, env=env, text=True, start_new_session=True, \*\*writes_to'
+replace = 'command, cwd=cwd, env=env, text=True, start_new_session=False, **writes_to'

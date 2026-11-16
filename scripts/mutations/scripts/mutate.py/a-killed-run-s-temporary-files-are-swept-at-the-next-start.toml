@@ -1,0 +1,5 @@
+[[rule]]
+name = "a killed run's temporary files are swept at the next start"
+file = "scripts/mutate.py"
+find = 'cleanup\.sweep\(cleanup\.ours\(MUTATE_TMP\), "run-"\)'
+replace = 'pass'

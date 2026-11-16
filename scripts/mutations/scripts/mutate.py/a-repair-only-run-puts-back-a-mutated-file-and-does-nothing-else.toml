@@ -1,0 +1,5 @@
+[[rule]]
+name = "a repair-only run puts back a mutated file and does nothing else"
+file = "scripts/mutate.py"
+find = '^            repair\(\)$'
+replace = 'pass'
