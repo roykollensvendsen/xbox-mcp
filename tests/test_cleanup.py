@@ -140,3 +140,14 @@ def test_a_held_folder_s_lock_is_taken_before_its_name_stands(tmp_path):
     finally:
         os.close(lock)
         held.remove()
+
+
+def test_a_second_run_in_the_same_checkout_stops_at_once(tmp_path):
+    first = cleanup.only_run(tmp_path, "A mutation run")
+    try:
+        with pytest.raises(SystemExit, match="already going") as refused:
+            cleanup.only_run(tmp_path, "A mutation run")
+        assert str(tmp_path.parent) in str(refused.value)
+    finally:
+        os.close(first)
+    os.close(cleanup.only_run(tmp_path, "A mutation run"))  # free again once the first has ended

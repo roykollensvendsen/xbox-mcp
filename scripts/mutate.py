@@ -8,6 +8,12 @@ in a file of its own under scripts/mutations/. Run it from the repository root:
 
     uv run python scripts/mutate.py [--write evidence/tests/rule-mutations.md]
 
+Only one run goes at a time in a checkout; a second stops at once. A run stopped with
+Ctrl-C, SIGTERM or SIGHUP puts its file back itself. After one was killed outright
+(kill -9), the next run puts it back first; to do only that:
+
+    uv run python scripts/mutate.py --repair-only
+
 A kill is not enough on its own. A mutation breaks whatever it breaks, and it
 can break a test for an incidental reason — a documented example whose output
 happened to change — leaving a rule looking guarded when nothing guards it. So
@@ -209,12 +215,8 @@ def run_suite() -> tuple[int, list[str]]:
     return int(m.group(1)) if m else 0, [f.split("::")[-1].split("[")[0] for f in failed]
 
 
-def mutate_all() -> int:
+def mutate_all(write: pathlib.Path | None = None) -> int:
     """Mutate every rule in turn, restore the tree, and report."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--write", type=pathlib.Path, help="write the evidence table here")
-    args = parser.parse_args()
-
     recover()
     # RULE: an empty rule table is not a crash
     # A scaffolded repository starts with a table of comments and no rows.
@@ -269,8 +271,8 @@ def mutate_all() -> int:
     if lost:
         print("CHANGED WHILE MUTATED, so left as they are:", ", ".join(sorted(set(lost))))  # noqa: T201
         print("Edit the tree while this runs and the result is not about your code.")  # noqa: T201
-    if args.write:
-        args.write.write_text(report(results, survived, lucky))
+    if write:
+        write.write_text(report(results, survived, lucky))
     return 1 if survived or lucky or lost else 0
 
 
@@ -318,16 +320,30 @@ which `tests/test_rules_have_evidence.py` requires.
 
 def main() -> int:
     """Mutate every rule in turn, and leave the temporary folder as it was found."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--write", type=pathlib.Path, help="write the evidence table here")
+    parser.add_argument(
+        "--repair-only", action="store_true", help="put back a file a killed run left mutated, and stop"
+    )
+    args = parser.parse_args()
     cleanup.stop_cleanly()
+    # RULE: only one mutation run goes at a time in a checkout
+    checkout = cleanup.only_run(RECOVERY.parent, "A mutation run")
     try:
+        if args.repair_only:
+            # Under the lock, so never the file of a run still going.
+            # RULE: a repair-only run puts back a mutated file and does nothing else
+            repair()
+            return 0
         cleanup.from_this_checkout(ROOT, [sys.executable])
-        return mutate_all()
+        return mutate_all(args.write)
     finally:
         # Only this run's own folders were removed; the shared one goes once it is empty,
         # and never while another run of this checkout is using it.
         # RULE: a mutation run leaves nothing in the temporary folder
         with contextlib.suppress(OSError):
             MUTATE_TMP.rmdir()
+        os.close(checkout)
 
 
 if __name__ == "__main__":

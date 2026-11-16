@@ -1,0 +1,5 @@
+[[rule]]
+name = "a second run in the same checkout stops at once"
+file = "scripts/cleanup.py"
+find = 'fcntl\.flock\(held, fcntl\.LOCK_EX \| fcntl\.LOCK_NB\)'
+replace = 'pass'
