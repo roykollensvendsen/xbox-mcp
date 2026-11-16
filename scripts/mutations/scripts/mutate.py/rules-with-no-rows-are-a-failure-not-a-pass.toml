@@ -1,0 +1,5 @@
+[[rule]]
+name = "rules with no rows are a failure not a pass"
+file = "scripts/mutate.py"
+find = '^    if not rules:$'
+replace = 'if False:'

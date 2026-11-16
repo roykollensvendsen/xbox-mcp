@@ -1,5 +1,5 @@
 [[rule]]
 name = "a file changed during the run is never restored over"
 file = "scripts/mutate.py"
-find = '^        return False$'
+find = 'return False  # the edit stays, and the caller names the file'
 replace = 'return True'
