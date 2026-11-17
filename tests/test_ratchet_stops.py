@@ -135,9 +135,19 @@ def _running(pid):
     """Whether process `pid` is still running, rather than ended or only a zombie left to reap."""
     try:
         state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return False
     return state != "Z"
+
+
+def test_a_process_that_ends_while_it_is_read_counts_as_ended(monkeypatch):
+    """Linux says "no such process" when a process ends between finding its file and reading it."""
+
+    def ended(*_args, **_kwargs):
+        raise ProcessLookupError(3, "No such process")
+
+    monkeypatch.setattr(Path, "read_text", ended)
+    assert not _running(os.getpid())
 
 
 @pytest.mark.skipif(not Path("/proc").is_dir(), reason="reads running processes from /proc")
