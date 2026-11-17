@@ -2,10 +2,10 @@
 """No commit message names a Claude session: those links point into one person's account."""
 
 import pathlib
-import subprocess
 import sys
 
 import pytest
+from bounded import run_bounded
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "scripts"))
 
@@ -36,9 +36,7 @@ def test_attribution_and_ordinary_mentions_pass(message):
 
 
 def git(folder, *args):
-    return subprocess.run(
-        ["git", "-C", str(folder), *args], check=True, capture_output=True, text=True, timeout=60
-    ).stdout
+    return run_bounded(["git", "-C", str(folder), *args], check=True, text=True).stdout
 
 
 def test_a_range_names_every_commit_that_links_a_session(tmp_path):

@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
+from bounded import WITHIN
 from pythonxbox.api.provider.smartglass.models import (
     CommandResponse,
     InstalledPackagesList,
@@ -288,11 +289,11 @@ def test_a_damaged_token_file_says_to_sign_in_again(tmp_path):
 def _redirect(query):
     cloud._Callback.code = None  # noqa: SLF001
     server = HTTPServer(("127.0.0.1", 0), cloud._Callback)  # noqa: SLF001
-    server.timeout = 10  # a request that never comes ends the wait, and fails below
+    server.timeout = WITHIN  # a request that never comes ends the wait, and fails below
     thread = threading.Thread(target=server.handle_request)
     thread.start()
-    reply = httpx.get(f"http://127.0.0.1:{server.server_port}/auth/callback{query}", timeout=10)
-    thread.join(timeout=15)
+    reply = httpx.get(f"http://127.0.0.1:{server.server_port}/auth/callback{query}", timeout=WITHIN)
+    thread.join(timeout=WITHIN)
     assert not thread.is_alive(), "the sign-in page never answered"
     server.server_close()
     return reply, cloud._Callback.code  # noqa: SLF001

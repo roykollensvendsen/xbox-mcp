@@ -8,7 +8,8 @@ and leaves no record. After grocery-mcp's tests of the same copy.
 
 import importlib.util
 import pathlib
-import subprocess
+
+from bounded import run_bounded
 
 ROOT = pathlib.Path(__file__).parent.parent
 
@@ -21,9 +22,7 @@ def _ratchet():
 
 
 def _git(where, *args):
-    done = subprocess.run(
-        ["git", "-C", str(where), *args], capture_output=True, text=True, check=True, timeout=60
-    )
+    done = run_bounded(["git", "-C", str(where), *args], text=True, check=True)
     return done.stdout.strip()
 
 
