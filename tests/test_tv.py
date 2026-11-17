@@ -12,6 +12,7 @@ import threading
 import time
 
 import pytest
+from bounded import WITHIN
 
 from xbox_mcp import tv
 from xbox_mcp.cli import tv_from
@@ -29,10 +30,23 @@ def _plugin(tmp_path, screen):
     return plugin, log
 
 
+@pytest.fixture
+def patient(monkeypatch):
+    """Give the stand-in TV plugin the tests' one bound to start, not the voice's few seconds.
+
+    These tests are about what is called and said, not how fast. Starting a Python program
+    and its handshake can take longer than the plugin's own bound on a busy machine, and then
+    the test failed with "working" for a TV that was fine. The wait still ends as soon as
+    the plugin answers, and its own bound is tested by the slow-plugin tests below.
+    """
+    monkeypatch.setattr(tv, "TV_WITHIN", WITHIN)
+
+
 def _calls(log):
     return [json.loads(line)[0] for line in log.read_text().splitlines()]
 
 
+@pytest.mark.usefixtures("patient")
 def test_an_on_tv_is_switched_through_the_tv_plugins_own_tools(tmp_path):
     plugin, log = _plugin(tmp_path, "on")
     answer = asyncio.run(show_xbox(plugin, settle=0.0))
@@ -40,6 +54,7 @@ def test_an_on_tv_is_switched_through_the_tv_plugins_own_tools(tmp_path):
     assert answer["outcome"] == "done"
 
 
+@pytest.mark.usefixtures("patient")
 def test_a_tv_that_never_comes_on_is_left_alone(tmp_path):
     plugin, log = _plugin(tmp_path, "off")
     answer = asyncio.run(show_xbox(plugin, settle=0.0))
@@ -49,10 +64,12 @@ def test_a_tv_that_never_comes_on_is_left_alone(tmp_path):
 
 def test_the_night_rule_reads_the_screen_through_the_tv_plugin(tmp_path):
     plugin, log = _plugin(tmp_path, "on")
-    assert asyncio.run(screen_on(plugin)) is True
+    # Its bound is a default argument, fixed when the module loads, so the patch never reaches it.
+    assert asyncio.run(screen_on(plugin, WITHIN)) is True
     assert _calls(log) == ["tv_status"]
 
 
+@pytest.mark.usefixtures("patient")
 def test_the_tv_plugin_is_closed_after_each_use(tmp_path):
     plugin, _ = _plugin(tmp_path, "on")
     asyncio.run(show_xbox(plugin, settle=0.0))
