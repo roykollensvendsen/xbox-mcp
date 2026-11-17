@@ -97,10 +97,15 @@ STOPS = [
 ]
 
 
+#: How long this test waits for a run of the tiny project. A bound on this test's own wait,
+#: not a limit on any real run: running out fails this test instead of hanging the suite.
+WITHIN = 300
+
+
 def _when(process, ready, within=30.0):
     deadline = time.monotonic() + within
     while not ready():
-        assert process.poll() is None, process.communicate()
+        assert process.poll() is None, process.communicate(timeout=within)
         assert time.monotonic() < deadline, "the run never got that far"
         time.sleep(0.05)
 
@@ -139,6 +144,7 @@ def test_a_mutation_run_leaves_nothing_in_the_temporary_folder(tmp_path):
         capture_output=True,
         text=True,
         check=False,
+        timeout=WITHIN,
     )
     assert "1/1 rules" in done.stdout, done.stdout + done.stderr
     assert _left_in(folder) == []
@@ -243,7 +249,9 @@ def test_a_test_run_removes_its_temporary_folder_when_it_ends(tmp_path):
     killed.mkdir()
     (killed / cleanup.LOCK).write_text("")
     command = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
-    done = subprocess.run(command, cwd=project, env=env, capture_output=True, text=True, check=False)
+    done = subprocess.run(
+        command, cwd=project, env=env, capture_output=True, text=True, check=False, timeout=WITHIN
+    )
     assert done.returncode == 0, done.stdout + done.stderr
     assert _left_in(folder) == sorted(
         str(p.relative_to(folder)) for p in [live.path, live.path / cleanup.LOCK]
@@ -257,7 +265,9 @@ def test_only_one_mutation_run_goes_at_a_time_in_a_checkout(tmp_path):
     running = cleanup.only_run(project / "scripts", "A mutation run")  # as a run going now holds it
     try:
         command = [sys.executable, "scripts/mutate.py"]
-        done = subprocess.run(command, cwd=project, env=env, capture_output=True, text=True, check=False)
+        done = subprocess.run(
+            command, cwd=project, env=env, capture_output=True, text=True, check=False, timeout=WITHIN
+        )
     finally:
         os.close(running)
     assert done.returncode != 0
@@ -276,7 +286,9 @@ def test_a_repair_only_run_puts_back_a_mutated_file_and_does_nothing_else(tmp_pa
     recovery = project / "scripts" / ".mutate-recovery.json"
     recovery.write_text(json.dumps({"file": "src/ruled/__init__.py", "original": RULED, "mutated": mutated}))
     command = [sys.executable, "scripts/mutate.py", "--repair-only"]
-    done = subprocess.run(command, cwd=project, env=env, capture_output=True, text=True, check=False)
+    done = subprocess.run(
+        command, cwd=project, env=env, capture_output=True, text=True, check=False, timeout=WITHIN
+    )
     assert done.returncode == 0, done.stdout + done.stderr
     assert source.read_text() == RULED
     assert not recovery.exists()
