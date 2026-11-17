@@ -37,7 +37,7 @@ def test_attribution_and_ordinary_mentions_pass(message):
 
 def git(folder, *args):
     return subprocess.run(
-        ["git", "-C", str(folder), *args], check=True, capture_output=True, text=True
+        ["git", "-C", str(folder), *args], check=True, capture_output=True, text=True, timeout=60
     ).stdout
 
 
