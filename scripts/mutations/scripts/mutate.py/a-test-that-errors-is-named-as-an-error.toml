@@ -1,0 +1,5 @@
+[[rule]]
+name = "a test that errors is named as an error"
+file = "scripts/mutate.py"
+find = 'errored = re\.findall\(r"\^ERROR \(\\S\+\)", plain, re\.MULTILINE\)'
+replace = 'errored = []'

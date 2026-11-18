@@ -116,3 +116,24 @@ def test_a_mutation_run_names_each_rule_before_it_tests_it(tmp_path, monkeypatch
     mutate.mutate_all()
     assert "testing  a guard holds" in seen[0]
     assert "KILLED   a guard holds: 1" in pipe.shown
+
+
+def test_a_test_that_errors_is_named_as_an_error(tmp_path, monkeypatch):
+    """A test whose setup broke went red without testing anything, and has to be told apart from a kill."""
+    mutate = _mutate(tmp_path, monkeypatch)
+    _suite_answers(mutate, monkeypatch, "ERROR tests/test_x.py::test_the_rule - OSError\n1 error\n")
+    assert mutate.run_suite() == (1, ["test_the_rule (error)"])
+
+
+def test_a_kill_by_another_test_names_the_tests_that_went_red(tmp_path, monkeypatch, capsys):
+    """A rule killed by a neighbour can flip between runs; the run has to say which test it was."""
+    mutate = _mutate(tmp_path, monkeypatch)
+    (tmp_path / "rows").mkdir()
+    (tmp_path / "rows" / "a-guard-holds.toml").write_text(
+        '[[rule]]\nname = "a guard holds"\nfile = "rule.py"\nfind = "pass"\nreplace = "return"\n'
+    )
+    (tmp_path / "rule.py").write_text("if guarded:\n    pass\n")
+    monkeypatch.setattr(mutate, "run_suite", lambda: (2, ["test_a_neighbour", "test_the_rule (error)"]))
+    assert mutate.mutate_all() == 1
+    said = capsys.readouterr().out
+    assert "BY LUCK  a guard holds: 2, red: test_a_neighbour, test_the_rule (error)" in said
