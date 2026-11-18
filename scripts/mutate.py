@@ -207,8 +207,12 @@ def run_suite() -> tuple[int, list[str]]:
     # RULE: a coloured failure line is still attributed
     plain = ANSI.sub("", r.stdout)
     m = re.search(r"(\d+) (?:failed|error)", plain)
-    failed = re.findall(r"^FAILED (\S+)", plain, re.MULTILINE)
-    return int(m.group(1)) if m else 0, [f.split("::")[-1].split("[")[0] for f in failed]
+    failed = [f.split("::")[-1].split("[")[0] for f in re.findall(r"^FAILED (\S+)", plain, re.MULTILINE)]
+    # A test whose setup broke went red without testing anything; it is named, never counted as a kill.
+    # RULE: a test that errors is named as an error
+    errored = re.findall(r"^ERROR (\S+)", plain, re.MULTILINE)
+    failed += [f"{e.split('::')[-1].split('[')[0]} (error)" for e in errored]
+    return int(m.group(1)) if m else 0, failed
 
 
 #: A rule's mark in the code: ``# RULE: what it says``.
@@ -281,7 +285,10 @@ def mutate_all(write: pathlib.Path | None = None) -> int:
             by_its_own = own in failed
             results.append((rule["name"], count, own, by_its_own))
             verdict = "KILLED  " if by_its_own else ("BY LUCK " if count else "SURVIVED")
-            print(f"{verdict} {rule['name']}: {count}", flush=True)  # noqa: T201
+            # A kill that can flip between runs has to say what flipped it.
+            # RULE: a kill by another test names the tests that went red
+            red = f", red: {', '.join(failed)}" if count and not by_its_own else ""
+            print(f"{verdict} {rule['name']}: {count}{red}", flush=True)  # noqa: T201
     finally:
         if standing is not None:
             restore(*standing)

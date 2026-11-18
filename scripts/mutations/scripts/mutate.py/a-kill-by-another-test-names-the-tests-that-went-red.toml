@@ -1,0 +1,5 @@
+[[rule]]
+name = "a kill by another test names the tests that went red"
+file = "scripts/mutate.py"
+find = 'red = f", red: \{'
+replace = 'red = ""'
