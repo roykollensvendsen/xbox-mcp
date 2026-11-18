@@ -131,6 +131,46 @@ def test_every_row_file_in_the_repository_is_where_its_rule_says():
     assert not misfiled, "row files out of place: " + "; ".join(misfiled)
 
 
+def test_every_row_finds_its_one_line_by_its_pattern_alone():
+    """A row whose pattern matches two lines switches off the first, which is the rule's only by luck.
+
+    A row that means a later match says so with `occurrence`. The form is weather-mcp #20's,
+    where it found two loose rows.
+    """
+    assert _loose(_mutate().all_rows()) == []
+
+
+def _loose(rows, root=ROOT):
+    """Each row with no `occurrence` whose pattern matches no line of its file, or more than one."""
+    loose = []
+    for rule in rows:
+        if "occurrence" in rule:
+            continue
+        lines = (root / rule["file"]).read_text().splitlines()
+        found = sum(1 for line in lines if re.search(rule["find"], line))
+        if found != 1:
+            loose.append(f"{rule['name']}: {found} lines match {rule['find']!r}")
+    return loose
+
+
+def test_a_row_that_matches_no_line_or_two_is_loose(tmp_path):
+    """Every row here is tight today, so without this the check above could pass by finding nothing."""
+    _file(tmp_path, "src", "door.py", "press()\npress()\nwait()\n")
+    rows = tmp_path / "rows"
+    for name, find, extra in [
+        ("twice", "press", ""),
+        ("never", "open", ""),
+        ("once", "wait", ""),
+        ("the second", "press", "occurrence = 2\n"),
+    ]:
+        row = f"[[rule]]\nname = \"{name}\"\nfile = \"src/door.py\"\nfind = '{find}'\nreplace = 'x'\n{extra}"
+        _file(rows, "src/door.py", f"{name.replace(' ', '-')}.toml", row)
+    assert sorted(_loose(_mutate().all_rows(rows), tmp_path)) == [
+        "never: 0 lines match 'open'",
+        "twice: 2 lines match 'press'",
+    ]
+
+
 def test_a_rule_whose_words_give_no_file_name_is_refused():
     """A name with no letter or digit would be filed as ".toml", and the next such name would land on it."""
     with pytest.raises(SystemExit, match="letter") as refused:
