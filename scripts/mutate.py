@@ -35,6 +35,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 
 import cleanup
@@ -276,7 +277,12 @@ def mutate_all(write: pathlib.Path | None = None) -> int:
             # run that hangs would otherwise leave no word of which rule it hung on.
             # RULE: a mutation run names each rule before it tests it
             print(f"testing  {rule['name']}", flush=True)  # noqa: T201
+            began = time.monotonic()
             count, failed = run_suite()
+            # A rule that takes far longer than the rest is one to look at, and a slow run
+            # shows here which rules made it slow.
+            # RULE: a mutation run says how long each rule took
+            took = time.monotonic() - began
             if not restore(path, text, mutated):
                 lost.append(rule["file"])
             standing = None
@@ -289,7 +295,7 @@ def mutate_all(write: pathlib.Path | None = None) -> int:
             # A kill that can flip between runs has to say what flipped it.
             # RULE: a kill by another test names the tests that went red
             red = f", red: {', '.join(failed)}" if count and not by_its_own else ""
-            print(f"{verdict} {rule['name']}: {count}{red}", flush=True)  # noqa: T201
+            print(f"{verdict} {rule['name']}: {count} in {took:.0f} s{red}", flush=True)  # noqa: T201
     finally:
         if standing is not None:
             restore(*standing)

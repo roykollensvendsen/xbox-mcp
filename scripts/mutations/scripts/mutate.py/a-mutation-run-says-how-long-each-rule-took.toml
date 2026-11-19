@@ -1,0 +1,5 @@
+[[rule]]
+name = "a mutation run says how long each rule took"
+file = "scripts/mutate.py"
+find = '^ {12}took = time\.monotonic\(\) - began$'
+replace = 'took = 0'
