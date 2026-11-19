@@ -8,6 +8,7 @@ a stand-in that answers as pytest would, so they need no tiny project of their o
 import importlib.util
 import pathlib
 import subprocess
+import types
 
 ROOT = pathlib.Path(__file__).parent.parent
 
@@ -136,7 +137,8 @@ def test_a_kill_by_another_test_names_the_tests_that_went_red(tmp_path, monkeypa
     monkeypatch.setattr(mutate, "run_suite", lambda: (2, ["test_a_neighbour", "test_the_rule (error)"]))
     assert mutate.mutate_all() == 1
     said = capsys.readouterr().out
-    assert "BY LUCK  a guard holds: 2, red: test_a_neighbour, test_the_rule (error)" in said
+    assert "BY LUCK  a guard holds: 2 in " in said
+    assert " s, red: test_a_neighbour, test_the_rule (error)\n" in said
 
 
 def test_a_row_that_breaks_the_code_is_reported_as_broken(tmp_path, monkeypatch, capsys):
@@ -172,3 +174,18 @@ def test_a_broken_row_still_leaves_the_survivors_named(tmp_path, monkeypatch):
     page = mutate.report([("kept", 0, "test_kept", False)], ["kept"], [], ["cut short"])
     assert "Survived: kept." in page
     assert "Broken rows, so nothing was tested: cut short." in page
+
+
+def test_a_mutation_run_says_how_long_each_rule_took(tmp_path, monkeypatch, capsys):
+    """Each result line says the seconds its suite took, so a slow rule stands out."""
+    mutate = _mutate(tmp_path, monkeypatch)
+    (tmp_path / "rows").mkdir()
+    (tmp_path / "rows" / "a-guard-holds.toml").write_text(
+        '[[rule]]\nname = "a guard holds"\nfile = "rule.py"\nfind = "pass"\nreplace = "x = 1"\n'
+    )
+    (tmp_path / "rule.py").write_text("if guarded:\n    pass\n")
+    monkeypatch.setattr(mutate, "run_suite", lambda: (1, ["test_a_guard_holds"]))
+    clock = iter([10.0, 52.4])
+    monkeypatch.setattr(mutate, "time", types.SimpleNamespace(monotonic=lambda: next(clock)))
+    mutate.mutate_all()
+    assert "KILLED   a guard holds: 1 in 42 s\n" in capsys.readouterr().out
