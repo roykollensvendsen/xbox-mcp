@@ -102,7 +102,7 @@ def test_a_mutation_run_names_each_rule_before_it_tests_it(tmp_path, monkeypatch
     mutate = _mutate(tmp_path, monkeypatch)
     (tmp_path / "rows").mkdir()
     (tmp_path / "rows" / "a-guard-holds.toml").write_text(
-        '[[rule]]\nname = "a guard holds"\nfile = "rule.py"\nfind = "pass"\nreplace = "return"\n'
+        '[[rule]]\nname = "a guard holds"\nfile = "rule.py"\nfind = "pass"\nreplace = "x = 1"\n'
     )
     (tmp_path / "rule.py").write_text("if guarded:\n    pass\n")
     pipe, seen = _Pipe(), []
@@ -130,10 +130,34 @@ def test_a_kill_by_another_test_names_the_tests_that_went_red(tmp_path, monkeypa
     mutate = _mutate(tmp_path, monkeypatch)
     (tmp_path / "rows").mkdir()
     (tmp_path / "rows" / "a-guard-holds.toml").write_text(
-        '[[rule]]\nname = "a guard holds"\nfile = "rule.py"\nfind = "pass"\nreplace = "return"\n'
+        '[[rule]]\nname = "a guard holds"\nfile = "rule.py"\nfind = "pass"\nreplace = "x = 1"\n'
     )
     (tmp_path / "rule.py").write_text("if guarded:\n    pass\n")
     monkeypatch.setattr(mutate, "run_suite", lambda: (2, ["test_a_neighbour", "test_the_rule (error)"]))
     assert mutate.mutate_all() == 1
     said = capsys.readouterr().out
     assert "BY LUCK  a guard holds: 2, red: test_a_neighbour, test_the_rule (error)" in said
+
+
+def test_a_row_that_breaks_the_code_is_reported_as_broken(tmp_path, monkeypatch, capsys):
+    """A replacement that does not compile fails every test, which would pass for a kill.
+
+    So it is named as the row's fault, nothing is run for it, the run fails, and the
+    written evidence lists it too.
+    """
+    mutate = _mutate(tmp_path, monkeypatch)
+    (tmp_path / "rows").mkdir()
+    (tmp_path / "rows" / "a-rule.toml").write_text(
+        '[[rule]]\nname = "a rule"\nfile = "rule.py"\nfind = "x = 1"\nreplace = "x = ("\n'
+    )
+    (tmp_path / "rule.py").write_text("x = 1\n")
+    suites = []
+    monkeypatch.setattr(mutate, "run_suite", lambda: suites.append(1) or (1, ["test_a_rule"]))
+    page = tmp_path / "evidence.md"
+    assert mutate.mutate_all(page) == 1
+    said = capsys.readouterr().out
+    assert "BROKEN   a rule: the replacement is not valid code" in said
+    assert "KILLED" not in said
+    assert suites == []
+    assert (tmp_path / "rule.py").read_text() == "x = 1\n"
+    assert "Broken rows, so nothing was tested: a rule." in page.read_text()
