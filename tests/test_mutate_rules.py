@@ -160,4 +160,15 @@ def test_a_row_that_breaks_the_code_is_reported_as_broken(tmp_path, monkeypatch,
     assert "KILLED" not in said
     assert suites == []
     assert (tmp_path / "rule.py").read_text() == "x = 1\n"
-    assert "Broken rows, so nothing was tested: a rule." in page.read_text()
+    written = page.read_text()
+    assert "Broken rows, so nothing was tested: a rule." in written
+    # Nothing ran for a broken row, so the page can't say none survived.
+    assert "None survived" not in written
+
+
+def test_a_broken_row_still_leaves_the_survivors_named(tmp_path, monkeypatch):
+    """Dropping "none survived" beside a broken row must not drop the rules that did survive."""
+    mutate = _mutate(tmp_path, monkeypatch)
+    page = mutate.report([("kept", 0, "test_kept", False)], ["kept"], [], ["cut short"])
+    assert "Survived: kept." in page
+    assert "Broken rows, so nothing was tested: cut short." in page
