@@ -253,6 +253,7 @@ def mutate_all(write: pathlib.Path | None = None) -> int:
         return empty
     results = []
     lost: list[str] = []
+    bad_rows: list[str] = []
     standing: tuple[pathlib.Path, str, str] | None = None
     try:
         for rule in rules:
@@ -261,13 +262,13 @@ def mutate_all(write: pathlib.Path | None = None) -> int:
             # bulk snapshot taken up front is restored over anything edited
             # since, and losing an edit that way costs more than the run.
             text = path.read_text()
-            lines = text.splitlines()
-            i = line_of(text, rule["find"], rule.get("occurrence", 1))
-            # Keep the line's own indentation: a replacement that carries its own
-            # would have to be kept in step with the source, and silently would not be.
-            indent = lines[i][: len(lines[i]) - len(lines[i].lstrip())]
-            lines[i] = indent + rule["replace"].strip()
-            mutated = "\n".join(lines) + "\n"
+            mutated = switched_off(text, rule)
+            why = broken(rule["file"], mutated)
+            # RULE: a row that breaks the code is reported as broken
+            if why:
+                bad_rows.append(rule["name"])
+                print(f"BROKEN   {rule['name']}: the replacement is not valid code ({why})", flush=True)  # noqa: T201
+                continue
             RECOVERY.write_text(json.dumps({"file": rule["file"], "original": text, "mutated": mutated}))
             path.write_text(mutated)
             standing = (path, text, mutated)
@@ -294,6 +295,16 @@ def mutate_all(write: pathlib.Path | None = None) -> int:
             restore(*standing)
         RECOVERY.unlink(missing_ok=True)
 
+    return _summary(results, bad_rows, lost, write)
+
+
+def _summary(
+    results: list[tuple[str, int, str, bool]],
+    bad_rows: list[str],
+    lost: list[str],
+    write: pathlib.Path | None,
+) -> int:
+    """Say what the run found, write the evidence page if asked, and give the exit status."""
     survived = [name for name, count, _, _ in results if count == 0]
     lucky = [name for name, count, _, own in results if count and not own]
     proven = len(results) - len(survived) - len(lucky)
@@ -302,15 +313,49 @@ def mutate_all(write: pathlib.Path | None = None) -> int:
         print("SURVIVED, so nothing protects them:", ", ".join(survived))  # noqa: T201
     if lucky:
         print("KILLED BY ANOTHER TEST, so the evidence is not about them:", ", ".join(lucky))  # noqa: T201
+    if bad_rows:
+        print("BROKEN ROW, so nothing was tested; make each a whole valid line:", ", ".join(bad_rows))  # noqa: T201
     if lost:
         print("CHANGED WHILE MUTATED, so left as they are:", ", ".join(sorted(set(lost))))  # noqa: T201
         print("Edit the tree while this runs and the result is not about your code.")  # noqa: T201
     if write:
-        write.write_text(report(results, survived, lucky))
-    return 1 if survived or lucky or lost else 0
+        write.write_text(report(results, survived, lucky, bad_rows))
+    return 1 if survived or lucky or lost or bad_rows else 0
 
 
-def report(results: list[tuple[str, int, str, bool]], survived: list[str], lucky: list[str]) -> str:
+def switched_off(text: str, rule: dict) -> str:
+    """The file's text with the rule's whole line replaced, keeping its indentation."""
+    lines = text.splitlines()
+    i = line_of(text, rule["find"], rule.get("occurrence", 1))
+    # Keep the line's own indentation: a replacement that carries its own
+    # would have to be kept in step with the source, and silently would not be.
+    indent = lines[i][: len(lines[i]) - len(lines[i].lstrip())]
+    lines[i] = indent + rule["replace"].strip()
+    return "\n".join(lines) + "\n"
+
+
+def broken(file: str, mutated: str) -> str | None:
+    """Why a mutated Python file no longer compiles, or None when it does.
+
+    A replacement cut off mid-expression stops the module importing, so every
+    test in its files errors: the run would count the rule as caught when the
+    row itself is wrong.
+    """
+    if not file.endswith(".py"):
+        return None
+    try:
+        compile(mutated, file, "exec")
+    except SyntaxError as e:
+        return f"line {e.lineno}: {e.msg}"
+    return None
+
+
+def report(
+    results: list[tuple[str, int, str, bool]],
+    survived: list[str],
+    lucky: list[str],
+    bad_rows: list[str] = (),
+) -> str:
     """Render the run as the evidence page."""
     rows = "\n".join(
         f"| {name} | {count} | `{own}` | {'yes' if by_own else 'NO'} |"
@@ -321,6 +366,7 @@ def report(results: list[tuple[str, int, str, bool]], survived: list[str], lucky
         f"**Result: {proven} of {len(results)} rules turned off the test that names them.**"
         + (" None survived." if not survived else f" Survived: {', '.join(survived)}.")
         + ("" if not lucky else f" Killed only by other tests: {', '.join(lucky)}.")
+        + ("" if not bad_rows else f" Broken rows, so nothing was tested: {', '.join(bad_rows)}.")
     )
     return f"""# Every rule, turned off in turn
 
