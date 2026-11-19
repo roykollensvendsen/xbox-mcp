@@ -354,7 +354,7 @@ def report(
     results: list[tuple[str, int, str, bool]],
     survived: list[str],
     lucky: list[str],
-    bad_rows: list[str] = (),
+    bad_rows: list[str],
 ) -> str:
     """Render the run as the evidence page."""
     rows = "\n".join(
@@ -364,7 +364,8 @@ def report(
     proven = len(results) - len(survived) - len(lucky)
     verdict = (
         f"**Result: {proven} of {len(results)} rules turned off the test that names them.**"
-        + (" None survived." if not survived else f" Survived: {', '.join(survived)}.")
+        # Nothing ran for a broken row, so "none survived" would claim more than was tested.
+        + (f" Survived: {', '.join(survived)}." if survived else "" if bad_rows else " None survived.")
         + ("" if not lucky else f" Killed only by other tests: {', '.join(lucky)}.")
         + ("" if not bad_rows else f" Broken rows, so nothing was tested: {', '.join(bad_rows)}.")
     )
