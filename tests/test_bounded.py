@@ -4,6 +4,7 @@
 import contextlib
 import os
 import signal
+import subprocess
 import time
 from pathlib import Path
 
@@ -20,6 +21,36 @@ def _running(pid):
     except (FileNotFoundError, ProcessLookupError):
         return False
     return state != "Z"
+
+
+def _group_running(group):
+    """Whether any process of `group` still runs, a zombie left to reap not counted.
+
+    `os.killpg(group, 0)` would count the zombie, so the group is read from /proc instead.
+    """
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            state, _parent, its_group = stat.read_text().rsplit(")", 1)[1].split()[:3]
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        if int(its_group) == group and state != "Z":
+            return True
+    return False
+
+
+def test_a_group_whose_last_process_is_a_zombie_counts_as_ended():
+    """A killed process stays a zombie until its parent reaps it, and that can lag on a busy machine.
+
+    In the test below the killed sleep is orphaned, so whatever adopts it reaps it, not the
+    test. Until then its group still has a member, though nothing in it runs. Here the child
+    is left unreaped on purpose, to hold that state still.
+    """
+    with subprocess.Popen(["true"], start_new_session=True) as child:
+        deadline = time.monotonic() + 10
+        while _running(child.pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert Path(f"/proc/{child.pid}/stat").exists(), "not a zombie, so this proves nothing"
+        assert not _group_running(child.pid)
 
 
 def test_a_child_that_runs_out_of_time_leaves_no_process_of_its_group(tmp_path):
@@ -42,8 +73,7 @@ def test_a_child_that_runs_out_of_time_leaves_no_process_of_its_group(tmp_path):
         while _running(grandchild) and time.monotonic() < deadline:
             time.sleep(0.05)
         assert not _running(grandchild), "the shell's grandchild was left running"
-        with pytest.raises(ProcessLookupError):
-            os.killpg(shell, 0)
+        assert not _group_running(shell), "a process of the shell's group was left running"
     finally:
         _end_if_still_the_sleep(told)
 
