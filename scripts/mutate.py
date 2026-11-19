@@ -371,7 +371,8 @@ def report(
     verdict = (
         f"**Result: {proven} of {len(results)} rules turned off the test that names them.**"
         # Nothing ran for a broken row, so "none survived" would claim more than was tested.
-        + (f" Survived: {', '.join(survived)}." if survived else "" if bad_rows else " None survived.")
+        + ("" if survived or bad_rows else " None survived.")
+        + ("" if not survived else f" Survived: {', '.join(survived)}.")
         + ("" if not lucky else f" Killed only by other tests: {', '.join(lucky)}.")
         + ("" if not bad_rows else f" Broken rows, so nothing was tested: {', '.join(bad_rows)}.")
     )

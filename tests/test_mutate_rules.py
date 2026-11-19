@@ -189,3 +189,10 @@ def test_a_mutation_run_says_how_long_each_rule_took(tmp_path, monkeypatch, caps
     monkeypatch.setattr(mutate, "time", types.SimpleNamespace(monotonic=lambda: next(clock)))
     mutate.mutate_all()
     assert "KILLED   a guard holds: 1 in 42 s\n" in capsys.readouterr().out
+
+
+def test_a_clean_run_still_says_none_survived(tmp_path, monkeypatch):
+    """With no survivor and no broken row, the page says so in words."""
+    mutate = _mutate(tmp_path, monkeypatch)
+    page = mutate.report([("kept", 1, "test_kept", True)], [], [], [])
+    assert "None survived." in page
